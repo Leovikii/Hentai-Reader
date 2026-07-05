@@ -82,7 +82,7 @@ export function createSidebar(
   }
 
   document.addEventListener('mousemove', (e) => {
-    if (!document.querySelector('.single-page-overlay.active')) return;
+    if (!document.querySelector('.pswp')) return;
     if (isDragging) return;
 
     // Failsafe: if mouse moves completely out of the viewport (top, bottom, left)

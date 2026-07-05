@@ -60,16 +60,21 @@ html.scroll-mode #gdt { display: flex; flex-direction: column; align-items: cent
 .interval-input { width: 60px; background: #333; border: 1px solid #555; border-radius: 4px; color: #fff; padding: 4px 8px; font-size: 12px; text-align: center; }
 .interval-input:focus { outline: none; border-color: #888; }
 
-/* Single page overlay */
-.single-page-overlay { position: fixed; top: 0; right: 0; bottom: 0; left: 0; width: 100vw; height: 100vh; background-color: #000 !important; z-index: 2147483646; display: none; align-items: center; justify-content: center; }
-.single-page-overlay.active { display: flex; }
-.sp-image-container { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; position: relative; }
-.sp-current-image { width: 100%; height: 100%; object-fit: contain; user-select: none; transition: opacity 0.1s; }
-.sp-current-image:not([src]), .sp-current-image[src=""] { opacity: 0; }
-.sp-close-btn { position: absolute; top: 20px; right: 20px; width: 40px; height: 40px; background: rgba(51,51,51,0.8); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 24px; color: #fff; transition: all 0.3s; z-index: 10; }
+
+.sp-close-btn { position: absolute; top: 20px; right: 20px; width: 40px; height: 40px; background: rgba(51,51,51,0.8); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 24px; color: #fff; transition: all 0.3s; z-index: 10; pointer-events: auto; }
 .sp-close-btn:hover { background: rgba(85,85,85,0.9); transform: scale(1.1); }
 
+/* On mobile/touch devices, automatically show the thumbnail panel when PhotoSwipe UI is visible */
+@media (hover: none) and (pointer: coarse) {
+  .pswp--ui-visible .sp-thumb-panel {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    transform: translateX(0) !important;
+  }
+}
+
 /* Sidebar Components */
+.sp-hidden-by-pswp { opacity: 0 !important; pointer-events: none !important; }
 .sp-sidebar-track { position: absolute; right: 12px; top: 10%; width: 12px; height: 80%; background: rgba(40,40,40,0.3); border-radius: 6px; z-index: 10; pointer-events: none; opacity: 0; transition: opacity 0.3s, background 0.3s; }
 .sp-sidebar-track.active { opacity: 1; pointer-events: auto; }
 .sp-sidebar-track:hover { background: rgba(50,50,50,0.5); }

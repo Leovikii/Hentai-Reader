@@ -28,4 +28,6 @@ export const i18n = {
   reloading: isZH ? '重新加载中...' : 'Reloading...',
   loadFailed: isZH ? '加载失败' : 'Load Failed',
   waitImagesToLoad: isZH ? '请等待图片加载' : 'Please wait for images to load',
+  resolvingImage: isZH ? '解析图片真实地址中...' : 'Resolving Image URL...',
+  resolveImageFailed: isZH ? '图片解析失败' : 'Image URL fetch failed',
 };

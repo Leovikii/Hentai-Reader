@@ -1,4 +1,5 @@
 import 'virtual:uno.css';
+import 'photoswipe/style.css';
 import './ui/styles.css';
 import { store } from './state/store';
 import { SiteManager } from './sites/site-manager';

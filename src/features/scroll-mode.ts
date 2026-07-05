@@ -41,6 +41,25 @@ export function disconnectObservers() {
   }
 }
 
+export async function prefetchImageUrl(url: string, nlToken?: string, force = false): Promise<{ src: string; nl?: string } | null> {
+  if (!force && store.resolvedUrls.has(url)) {
+    return { src: store.resolvedUrls.get(url)! };
+  }
+  const adapter = store.activeAdapter;
+  if (!adapter) return null;
+
+  try {
+    const res = await adapter.resolveImage(url, nlToken);
+    if (res && res.src) {
+      store.resolvedUrls.set(url, res.src);
+      return res;
+    }
+    return null;
+  } catch (err) {
+    return null;
+  }
+}
+
 export function loadPlaceholderImage(placeholder: HTMLElement) {
   const url = placeholder.dataset.url!;
   const pIndex = parseInt(placeholder.dataset.pIndex!);
@@ -57,7 +76,7 @@ export function loadPlaceholderImage(placeholder: HTMLElement) {
   placeholder.dataset.isFetching = 'true';
   placeholder.dataset.lazyLoaded = 'true';
   
-  adapter.resolveImage(url).then(res => {
+  prefetchImageUrl(url).then(res => {
     if (res) {
       const img = document.createElement('img');
       img.className = 'r-img';
@@ -74,34 +93,17 @@ export function loadPlaceholderImage(placeholder: HTMLElement) {
           autoRetries++;
           showToast(`P${pIndex}-${index + 1}: Auto requesting new node... (${autoRetries}/${MAX_AUTO_RETRIES})`, 3000);
           
-          // Set to loading state briefly
           if (placeholder.parentNode) {
             placeholder.className = 'r-ph sp-placeholder loading';
-            placeholder.innerHTML = `
-              <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; transform: translateY(-20px);">
-                <div style="display: flex; align-items: center; gap: 10px; background: rgba(20, 20, 20, 0.8); border: 1px solid rgba(255, 255, 255, 0.1); padding: 10px 20px; border-radius: 30px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5); backdrop-filter: blur(8px); margin-bottom: 16px;">
-                  <style>@keyframes sp-spin { 100% { transform: rotate(360deg); } }</style>
-                  <svg style="color: #F596AA; width: 20px; height: 20px; animation: sp-spin 1s linear infinite;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                    <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
-                  </svg>
-                  <div style="font-size: 15px; color: #f3f4f6; font-weight: 500; letter-spacing: 0.5px;">Auto Retrying...</div>
-                </div>
-                <div style="font-size: 14px; color: rgba(255, 255, 255, 0.5); font-family: monospace; letter-spacing: 1px;">P${pIndex}-${index + 1}</div>
-              </div>
-            `;
-            if (img.parentNode) {
-              img.parentNode.replaceChild(placeholder, img);
-            }
+            if (img.parentNode) img.parentNode.replaceChild(placeholder, img);
           }
 
-          adapter.resolveImage(url, currentNlToken).then(newRes => {
+          prefetchImageUrl(url, currentNlToken, true).then(newRes => {
             if (newRes) {
               img.src = newRes.src;
               img.dataset.realSrc = newRes.src;
-              currentNlToken = newRes.nl; // Update token for next potential failure
-              if (placeholder.parentNode) {
-                placeholder.parentNode.replaceChild(img, placeholder);
-              }
+              currentNlToken = newRes.nl;
+              if (placeholder.parentNode) placeholder.parentNode.replaceChild(img, placeholder);
             } else {
               showError();
             }
@@ -114,9 +116,7 @@ export function loadPlaceholderImage(placeholder: HTMLElement) {
       function showError() {
         if (placeholder.parentNode) {
           setErrorState(placeholder, pIndex, index);
-          if (img.parentNode) {
-            img.parentNode.replaceChild(placeholder, img);
-          }
+          if (img.parentNode) img.parentNode.replaceChild(placeholder, img);
         }
       }
 
@@ -141,8 +141,7 @@ export function loadPlaceholderImage(placeholder: HTMLElement) {
     } else {
       setErrorState(placeholder, pIndex, index);
     }
-  })
-  .catch(() => {
+  }).catch(() => {
     setErrorState(placeholder, pIndex, index);
   });
 }
