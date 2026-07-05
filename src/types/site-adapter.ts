@@ -1,6 +1,8 @@
 export interface PageLink {
   url: string;
   thumb?: string;
+  thumbW?: number;
+  thumbH?: number;
 }
 
 export interface SiteAdapter {
@@ -19,6 +21,9 @@ export interface SiteAdapter {
 
   // Given an image url/link, fetch the actual image URL
   resolveImage(url: string, ...args: any[]): Promise<{src: string, nl?: string} | null>;
+
+  // Optional: Given a resolved image url, extract its dimensions if encoded in the URL
+  extractDimensionFromResolvedUrl?: (url: string) => { w: number, h: number } | null;
 
   // Bump the priority of a currently loading/queued image
   bumpPriority?: (url: string) => void;

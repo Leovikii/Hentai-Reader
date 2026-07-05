@@ -83,7 +83,17 @@ export function loadPlaceholderImage(placeholder: HTMLElement) {
       img.dataset.viewerUrl = url;
       img.dataset.realSrc = res.src;
       if (thumb) img.dataset.thumbSrc = thumb;
+      if (placeholder.dataset.thumbW) img.dataset.thumbW = placeholder.dataset.thumbW;
+      if (placeholder.dataset.thumbH) img.dataset.thumbH = placeholder.dataset.thumbH;
       if (res.nl) img.dataset.nl = res.nl;
+      
+      if (store.activeAdapter?.extractDimensionFromResolvedUrl) {
+         const extracted = store.activeAdapter.extractDimensionFromResolvedUrl(res.src);
+         if (extracted) {
+            img.style.aspectRatio = `${extracted.w} / ${extracted.h}`;
+            store.imageDimensions.set(url, extracted);
+         }
+      }
       let currentNlToken = res.nl;
       let autoRetries = 0;
       const MAX_AUTO_RETRIES = 3;
@@ -189,6 +199,8 @@ export function processBatch(links: PageLink[], pIndex: number, container?: HTML
     placeholder.dataset.pIndex = String(pIndex);
     placeholder.dataset.index = String(index);
     if (link.thumb) placeholder.dataset.thumb = link.thumb;
+    if (link.thumbW) placeholder.dataset.thumbW = String(link.thumbW);
+    if (link.thumbH) placeholder.dataset.thumbH = String(link.thumbH);
     
     placeholder.innerHTML = `
       <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; transform: translateY(-20px);">

@@ -209,7 +209,7 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
       bgOpacity: 1,
       spacing: 0.1,
       wheelToZoom: false,
-      preload: [1, 3], // Preload 1 before, 3 after
+      preload: [1, 1], // Reduced from [1, 3] to save memory for massive WebPs
       closeOnVerticalDrag: true,
       arrowPrev: false,
       arrowNext: false,
@@ -236,23 +236,30 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
     });
 
     const fetchingState = new Map<string, 'resolving' | 'downloading'>();
+    const tempImages = new Map<number, HTMLImageElement>(); // Keep track to abort
+
+    pswp.on('contentRemove', (e) => {
+      const content = e.content;
+      if (tempImages.has(content.index)) {
+        const tImg = tempImages.get(content.index)!;
+        tImg.src = '';
+        tempImages.delete(content.index);
+      }
+    });
 
     pswp.on('numItems', (e) => {
       e.numItems = store.allImages.length;
     });
 
     pswp.on('itemData', (e) => {
-      console.log(`[PS Debug] itemData requested for index ${e.index}`);
       const el = store.allImages[e.index];
       if (!el) {
-        console.warn(`[PS Debug] No element found for index ${e.index}`);
         e.itemData = { src: '', w: 0, h: 0 } as any;
         return;
       }
       const viewerUrl = el.dataset.url || el.dataset.viewerUrl || '';
       const fallbackSrc = (el as HTMLImageElement).dataset.realSrc || (el as HTMLImageElement).src || '';
       
-      console.log(`[PS Debug] Viewer URL for index ${e.index}:`, viewerUrl);
       const resolvedSrc = store.resolvedUrls.get(viewerUrl) || fallbackSrc;
       let dim = store.imageDimensions.get(viewerUrl);
       if (!dim && el.tagName === 'IMG') {
@@ -262,25 +269,43 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
           store.imageDimensions.set(viewerUrl, dim);
         }
       }
-
-      if (resolvedSrc && resolvedSrc.indexOf('x.gif') === -1) {
-        if (!dim) {
-          dim = { w: window.innerWidth, h: window.innerHeight * 1.5 };
-          // Need to grab the actual dimensions in the background to fix stretching
-          if (!fetchingState.has(viewerUrl)) {
-            fetchingState.set(viewerUrl, 'downloading');
-            const tempImg = new Image();
-            tempImg.onload = () => {
-              fetchingState.delete(viewerUrl);
-              store.imageDimensions.set(viewerUrl, { w: tempImg.naturalWidth, h: tempImg.naturalHeight });
-              if (pswp) pswp.refreshSlideContent(e.index);
-            };
-            tempImg.onerror = () => fetchingState.delete(viewerUrl);
-            tempImg.src = resolvedSrc;
-          }
+      
+      if (!dim && resolvedSrc && store.activeAdapter?.extractDimensionFromResolvedUrl) {
+        const extracted = store.activeAdapter.extractDimensionFromResolvedUrl(resolvedSrc);
+        if (extracted) {
+          dim = extracted;
+          store.imageDimensions.set(viewerUrl, dim);
         }
+      }
+
+      // If dimensions are unknown, calculate fallback
+      if (!dim) {
+        let fallbackW = window.innerWidth;
+        let fallbackH = 0;
         
-        console.log(`[PS Debug] returning resolved data for index ${e.index}: src=${resolvedSrc.substring(0, 50)}..., w=${dim.w}, h=${dim.h}`);
+        const tw = parseInt(el.dataset.thumbW || '0', 10);
+        const th = parseInt(el.dataset.thumbH || '0', 10);
+        
+        if (tw > 0 && th > 0) {
+          // 1. Use extracted thumbnail dimensions if available
+          fallbackH = (fallbackW / tw) * th;
+        } else {
+          // 2. Elegant fallback: use aspect ratio of any already loaded image in the gallery
+          let fallbackRatio = 1.414; // Standard manga A4 aspect ratio (height / width)
+          for (const loadedDim of store.imageDimensions.values()) {
+            if (loadedDim.w > 0 && loadedDim.h > 0) {
+              fallbackRatio = loadedDim.h / loadedDim.w;
+              break;
+            }
+          }
+          fallbackH = fallbackW * fallbackRatio;
+        }
+        dim = { w: fallbackW, h: fallbackH };
+      }
+
+      const trueDimKnown = store.imageDimensions.has(viewerUrl) || (el.tagName === 'IMG' && (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0);
+
+      if (resolvedSrc && resolvedSrc.indexOf('x.gif') === -1 && trueDimKnown) {
         e.itemData = {
           src: resolvedSrc,
           msrc: el.dataset.thumb, // low res
@@ -288,8 +313,6 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
           h: dim.h,
         } as any;
       } else {
-        const dim = { w: window.innerWidth, h: window.innerHeight * 1.5 };
-        console.log(`[PS Debug] returning placeholder for index ${e.index}, triggering fetch`);
         e.itemData = {
           src: '', // Empty src triggers loading state
           msrc: el.dataset.thumb,
@@ -298,14 +321,11 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
         } as any;
 
         if (!fetchingState.has(viewerUrl) && viewerUrl) {
-          console.log(`[PS Debug] Fetching URL for index ${e.index}:`, viewerUrl);
           fetchingState.set(viewerUrl, 'resolving');
           if (pswp && pswp.currIndex === e.index) {
              hud.show({ status: 'loading', text: i18n.resolvingImage });
           }
           prefetchImageUrl(viewerUrl).then(res => {
-            console.log(`[PS Debug] fetch resolved for index ${e.index}:`, res?.src ? res.src.substring(0, 50) + '...' : 'empty');
-            
             if (res && res.src) {
               fetchingState.set(viewerUrl, 'downloading');
               if (pswp && pswp.currIndex === e.index) {
@@ -313,22 +333,17 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
               }
               const img = new Image();
               img.onload = () => {
-                console.log(`[PS Debug] image onload for index ${e.index}, w: ${img.naturalWidth}, h: ${img.naturalHeight}`);
                 store.imageDimensions.set(viewerUrl, { w: img.naturalWidth, h: img.naturalHeight });
                 fetchingState.delete(viewerUrl);
                 if (pswp) {
                   if (pswp.currIndex === e.index) hud.hide();
-                  console.log(`[PS Debug] refreshing slide content for index ${e.index}`);
                   pswp.refreshSlideContent(e.index);
                   if (pswp.currIndex === e.index && store.autoPlay) {
                     autoPlay.start();
                   }
-                } else {
-                   console.warn('[PS Debug] pswp instance is null during image onload');
                 }
               };
-              img.onerror = (err) => {
-                 console.error(`[PS Debug] image onerror for index ${e.index}`, err);
+              img.onerror = () => {
                  fetchingState.delete(viewerUrl);
                  if (pswp && pswp.currIndex === e.index) {
                     hud.show({ status: 'error', text: i18n.loadFailed });
@@ -340,8 +355,7 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
               fetchingState.delete(viewerUrl);
               if (pswp && pswp.currIndex === e.index) hud.hide();
             }
-          }).catch(err => {
-             console.error(`[PS Debug] fetch error for index ${e.index}`, err);
+          }).catch(() => {
              fetchingState.delete(viewerUrl);
              if (pswp && pswp.currIndex === e.index) {
                 hud.show({ status: 'error', text: i18n.resolveImageFailed });
@@ -357,8 +371,8 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
       const slide = pswp?.currSlide;
       if (!slide) return;
       
-      // If the image is zoomed in (larger than 'fit'), let PhotoSwipe handle the panning natively.
-      if (slide.currZoomLevel > slide.zoomLevels.fit) {
+      // If the image is zoomed in (larger than 'initial'), let PhotoSwipe handle the panning natively.
+      if (slide.currZoomLevel > slide.zoomLevels.initial) {
         return;
       }
 
@@ -379,7 +393,6 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
 
     pswp.on('change', () => {
       if (pswp) {
-        console.log(`[PS Debug] change event fired, currIndex = ${pswp.currIndex}`);
         store.currentImageIndex = pswp.currIndex;
         sidebar.update();
         checkAndLoadNextPage();

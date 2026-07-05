@@ -151,5 +151,13 @@ export const EHentaiAdapter: SiteAdapter = {
     document.querySelectorAll<HTMLElement>(HIDDEN_SELECTORS.join(',')).forEach(el => {
       el.style.display = 'none';
     });
+  },
+  
+  extractDimensionFromResolvedUrl(url: string) {
+    const m = url.match(/-(\d+)-(\d+)-(?:wbp|jpg|png|gif|jpeg)/i);
+    if (m) {
+      return { w: parseInt(m[1], 10), h: parseInt(m[2], 10) };
+    }
+    return null;
   }
 };
