@@ -177,7 +177,8 @@ export function processBatch(links: PageLink[], pIndex: number, container?: HTML
   let targetContainer = container;
   if (!targetContainer) {
     targetContainer = document.querySelector('#gdt-hidden') as HTMLElement || 
-                      document.querySelector('.scroll-mode #gdt, .scroll-mode .gm, .scroll-mode .entry-content, .scroll-mode .wp-block-post-content, .scroll-mode .post-content') as HTMLElement || 
+                      store.activeAdapter?.getContainer() ||
+                      document.querySelector('.scroll-mode .entry-content, .scroll-mode .wp-block-post-content, .scroll-mode .post-content') as HTMLElement || 
                       document.body;
   }
 
@@ -229,7 +230,7 @@ export function setupAutoScroll(): void {
       store.isFetching = true;
       store.activeAdapter!.fetchPage(store.nextUrl).then(({ links, nextUrl: nUrl }) => {
         store.currPage++;
-        processBatch(links, store.currPage, document.querySelector('.scroll-mode #gdt, .scroll-mode .gm, .scroll-mode .entry-content, .scroll-mode .wp-block-post-content, .scroll-mode .post-content') as HTMLElement || document.body);
+        processBatch(links, store.currPage, store.activeAdapter?.getContainer() || document.querySelector('.scroll-mode .entry-content, .scroll-mode .wp-block-post-content, .scroll-mode .post-content') as HTMLElement || document.body);
 
         store.nextUrl = nUrl;
         store.isFetching = false;
