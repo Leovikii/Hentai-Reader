@@ -103,12 +103,16 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
       setTimeout(() => {
         currentImage.src = imgSrc;
         currentImage.dataset.assignedSrc = imgSrc;
-        if (!isImageReady(currentImg as HTMLImageElement)) {
+        if (!isImageReady(currentImg as HTMLImageElement) && !isImageReady(currentImage)) {
           showPlaceholder(i18n.downloading);
         } else {
           removePlaceholder();
         }
       }, 0);
+    } else if (imgSrc && currentImage.dataset.assignedSrc === imgSrc) {
+      if (isImageReady(currentImg as HTMLImageElement) || isImageReady(currentImage)) {
+        removePlaceholder();
+      }
     } else if (!imgSrc && currentImage.dataset.assignedSrc) {
       currentImage.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
       delete currentImage.dataset.assignedSrc;
@@ -146,6 +150,11 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
       const currentImg = store.allImages[store.currentImageIndex];
       if (!currentImg) return;
 
+      const latestImgSrc = (currentImg as HTMLImageElement).dataset.realSrc || (currentImg as HTMLImageElement).src;
+      if (latestImgSrc) {
+        applyOverlaySrc(latestImgSrc, currentImg);
+      }
+
       // Preload current and next 3 images
       for (let i = 0; i <= 3; i++) {
         const targetImg = store.allImages[store.currentImageIndex + i];
@@ -169,7 +178,7 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
     function onImageReady(): void {
       if (store.currentImageIndex !== idx) return;
       const img = store.allImages[idx];
-      if (img && isImageReady(img as HTMLImageElement)) {
+      if ((img && isImageReady(img as HTMLImageElement)) || isImageReady(currentImage)) {
         clearLoadPoll();
         removePlaceholder();
         sidebar.update();
@@ -282,6 +291,16 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
 
   // Wire up sub-modules (forward declarations resolved via closures)
   const autoPlay = createAutoPlay(() => nav.nextImage());
+
+  currentImage.addEventListener('load', () => {
+    if (!overlay.classList.contains('active')) return;
+    if (currentImage.src && !currentImage.src.includes('data:') && isImageReady(currentImage)) {
+      removePlaceholder();
+      clearLoadPoll();
+      sidebar.update();
+      if (store.autoPlay) autoPlay.start();
+    }
+  });
 
   const sidebar = createSidebar((index) => {
     store.currentImageIndex = index;

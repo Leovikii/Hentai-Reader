@@ -156,8 +156,11 @@ export function createSidebar(
 
     const img = store.allImages[index];
     let thumbSrc = '';
+    const isLoadedImg = img && img.tagName === 'IMG' && (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0;
 
-    if (img && (img as HTMLImageElement).src) {
+    if (isLoadedImg) {
+      thumbSrc = (img as HTMLImageElement).dataset.realSrc || (img as HTMLImageElement).src;
+    } else if (img && (img as HTMLImageElement).src) {
       thumbSrc = (img as HTMLImageElement).dataset.thumbSrc || (img as HTMLImageElement).dataset.realSrc || (img as HTMLImageElement).src;
     } else if (img && (img as HTMLElement).dataset.thumb) {
       thumbSrc = (img as HTMLElement).dataset.thumb!;
@@ -177,25 +180,38 @@ export function createSidebar(
       if (thumbCanvas.dataset.src !== thumbSrc) {
         thumbCanvas.dataset.src = thumbSrc;
         
-        const tempImg = new Image();
-        tempImg.onload = () => {
-          if (thumbCanvas!.dataset.src === thumbSrc) {
-            const MAX_W = 300;
-            let w = tempImg.naturalWidth;
-            let h = tempImg.naturalHeight;
-            if (w > MAX_W) {
-              h = (h * MAX_W) / w;
-              w = MAX_W;
-            }
-            thumbCanvas!.width = w;
-            thumbCanvas!.height = h;
-            const ctx = thumbCanvas!.getContext('2d');
-            if (ctx) {
-              ctx.drawImage(tempImg, 0, 0, w, h);
-            }
+        const MAX_W = 300;
+        if (isLoadedImg) {
+          let w = (img as HTMLImageElement).naturalWidth;
+          let h = (img as HTMLImageElement).naturalHeight;
+          if (w > MAX_W) {
+            h = (h * MAX_W) / w;
+            w = MAX_W;
           }
-        };
-        tempImg.src = thumbSrc;
+          thumbCanvas!.width = w;
+          thumbCanvas!.height = h;
+          const ctx = thumbCanvas!.getContext('2d');
+          if (ctx) ctx.drawImage(img as HTMLImageElement, 0, 0, w, h);
+        } else {
+          const tempImg = new Image();
+          tempImg.onload = () => {
+            if (thumbCanvas!.dataset.src === thumbSrc) {
+              let w = tempImg.naturalWidth;
+              let h = tempImg.naturalHeight;
+              if (w > MAX_W) {
+                h = (h * MAX_W) / w;
+                w = MAX_W;
+              }
+              thumbCanvas!.width = w;
+              thumbCanvas!.height = h;
+              const ctx = thumbCanvas!.getContext('2d');
+              if (ctx) {
+                ctx.drawImage(tempImg, 0, 0, w, h);
+              }
+            }
+          };
+          tempImg.src = thumbSrc;
+        }
       }
       const label = el.querySelector('.sp-thumb-label') as HTMLElement;
       if (label) label.textContent = String(store.imageOffset + index + 1);
