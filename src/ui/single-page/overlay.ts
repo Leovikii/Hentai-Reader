@@ -20,6 +20,9 @@ export interface SinglePageOverlayDeps {
 export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePageModeHandle {
   let pswp: PhotoSwipe | null = null;
   let isActive = false;
+  let isReinitializing = false;
+  let hasNavigatedInReader = false;
+  let lastNavigatedIndex = -1;
 
   // Sync our `store.allImages` with the DOM placeholders
   function syncImages(): void {
@@ -39,7 +42,7 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
   function checkAndLoadNextPage(): void {
     if (!store.nextUrl || store.isFetching) return;
     const remainingImages = store.allImages.length - store.currentImageIndex;
-    if (remainingImages <= 10) {
+    if (remainingImages <= 5) {
       loadNextPage();
     }
   }
@@ -69,17 +72,17 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
       const prevCount = links.length;
       deps.onLoadPrevPage(links, prevUrl ?? null);
 
+      isReinitializing = true;
       store.currentImageIndex += prevCount;
       store.imageOffset = Math.max(0, store.imageOffset - prevCount);
       
-      if (prevCount > 0 && store.currentImageIndex === prevCount) {
-        store.currentImageIndex--; // Auto-advance to the newly loaded previous image
-      }
-
       syncImages();
       if (pswp) {
+        // @ts-ignore
+        if (pswp.mainScroll && pswp.mainScroll.stop) pswp.mainScroll.stop();
         pswp.goTo(store.currentImageIndex);
       }
+      isReinitializing = false;
       store.isFetching = false;
       hud.hide();
     }).catch((err) => {
@@ -103,17 +106,23 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
 
   // We will append sidebar elements to PhotoSwipe once it initializes
 
-  function open(): void {
+  function open(startIdx?: number): void {
     store.allImages = Array.from(qa('.r-img, .r-ph')) as HTMLElement[];
     if (store.allImages.length === 0) {
       alert(i18n.waitImagesToLoad);
       return;
     }
 
-    let startIndex = 0;
-    // Calculate start index (same as before)
-    if (store.settings.scrollMode) {
-      let minDistance = Infinity;
+    let startIndex = startIdx ?? 0;
+    
+    // Reset navigation tracker on open
+    hasNavigatedInReader = false;
+    lastNavigatedIndex = startIndex;
+    
+    // Calculate start index only if not provided explicitly
+    if (startIdx === undefined) {
+      if (store.settings.scrollMode) {
+        let minDistance = Infinity;
       store.allImages.forEach((img, index) => {
         const rect = img.getBoundingClientRect();
         const viewportCenter = window.innerHeight / 2;
@@ -128,40 +137,8 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
           }
         }
       });
-    } else {
-      const adapter = store.activeAdapter;
-      let nativeImages: HTMLElement[] = [];
-      if (adapter?.getNativeImages) nativeImages = adapter.getNativeImages();
-      else {
-        const container = adapter?.getContainer();
-        if (container) nativeImages = Array.from(container.querySelectorAll('img')).filter(img => img.clientWidth > 50 || img.clientHeight > 50);
-      }
-      if (nativeImages.length > 0) {
-        let minDistance = Infinity;
-        let bestNativeImg: HTMLElement | null = null;
-        nativeImages.forEach((img) => {
-          const rect = img.getBoundingClientRect();
-          if (rect.width === 0 || rect.height === 0) return;
-          const viewportCenter = window.innerHeight / 2;
-          if (rect.top <= viewportCenter && rect.bottom >= viewportCenter) {
-            bestNativeImg = img;
-            minDistance = -1;
-          } else if (minDistance !== -1) {
-            const distanceToCenter = rect.bottom < viewportCenter ? viewportCenter - rect.bottom : rect.top - viewportCenter;
-            if (distanceToCenter < minDistance) {
-              minDistance = distanceToCenter;
-              bestNativeImg = img;
-            }
-          }
-        });
-        if (bestNativeImg) {
-          const currentSrc = (bestNativeImg as HTMLImageElement).dataset?.viewerUrl || (bestNativeImg as HTMLImageElement).dataset?.src || (bestNativeImg as HTMLImageElement).src;
-          const foundIdx = store.allImages.findIndex(i => {
-            const iSrc = (i as HTMLImageElement).dataset?.url || (i as HTMLImageElement).dataset?.viewerUrl || (i as HTMLImageElement).dataset?.realSrc || (i as HTMLImageElement).dataset?.src || (i as HTMLImageElement).src;
-            return iSrc === currentSrc;
-          });
-          if (foundIdx !== -1) startIndex = foundIdx;
-        }
+      } else {
+        startIndex = store.currentImageIndex;
       }
     }
 
@@ -177,7 +154,6 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
   }
 
   function initPhotoSwipe(startIndex: number) {
-    console.log('[PS Debug] initPhotoSwipe called with startIndex:', startIndex);
     let mobileUiTimeout: ReturnType<typeof setTimeout>;
     function triggerMobileUITimeout() {
       if (!window.matchMedia('(hover: none) and (pointer: coarse)').matches) return;
@@ -207,6 +183,7 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
 
     pswp = new PhotoSwipe({
       index: startIndex,
+      counter: false, // We use a custom counter to show global offset
       bgOpacity: 1,
       spacing: 0.1,
       wheelToZoom: false,
@@ -409,6 +386,8 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
                  targetIndex = Math.max(0, Math.min(store.allImages.length - 1, targetIndex));
                  
                  if (targetIndex !== pswp!.currIndex) {
+                     // @ts-ignore
+                     if (pswp!.mainScroll && pswp!.mainScroll.stop) pswp!.mainScroll.stop();
                      pswp!.goTo(targetIndex);
                  }
                  // Keep remainder for smooth trackpads, but cap it
@@ -423,6 +402,9 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
     });
 
     pswp.on('change', () => {
+      if (isReinitializing) {
+        return;
+      }
       if (pswp) {
         store.currentImageIndex = pswp.currIndex;
         sidebar.update();
@@ -439,8 +421,17 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
            hud.hide();
         }
 
-        // Check if we need to load previous page when going backwards
-        if (store.currentImageIndex <= 3 && store.prevUrl) {
+        // Track navigation
+        if (lastNavigatedIndex !== -1 && lastNavigatedIndex !== pswp.currIndex) {
+          hasNavigatedInReader = true;
+        }
+        
+        // Only trigger prev page load if we are actively navigating backwards near the edge, 
+        // or if we literally hit the absolute 0 index while trying to go back.
+        const isNavigatingBackwards = pswp.currIndex < lastNavigatedIndex;
+        lastNavigatedIndex = pswp.currIndex;
+
+        if (store.currentImageIndex <= 3 && store.prevUrl && hasNavigatedInReader && isNavigatingBackwards) {
           loadPrevPage();
         }
         if (store.autoPlay) {
@@ -472,9 +463,17 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
             }
           }
         });
-        store.on('settingsChanged', () => {
-           const btn = document.querySelector('.pswp__button--slideshow');
-           if (btn) btn.innerHTML = store.autoPlay ? svgPause : svgPlay;
+
+        // Register Custom Counter
+        pswp.ui.registerElement({
+          name: 'custom-counter',
+          order: 5,
+          onInit: (el, pswpInstance) => {
+            el.className = 'pswp__counter'; // Use native class for styling
+            pswpInstance.on('change', () => {
+              el.innerHTML = `${store.imageOffset + pswpInstance.currIndex + 1} / ${store.imageOffset + store.allImages.length}`;
+            });
+          }
         });
       }
 
@@ -509,17 +508,10 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
     });
 
     pswp.on('close', () => {
-      console.log('[PS Debug] close event fired');
       close();
     });
 
-    try {
-      console.log('[PS Debug] Calling pswp.init()');
-      pswp.init();
-      console.log('[PS Debug] pswp.init() succeeded');
-    } catch (e) {
-      console.error('[PS Debug] pswp.init() threw an error:', e);
-    }
+    pswp.init();
   }
 
   function close(): void {
@@ -545,6 +537,10 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
         }
       }
     }
+
+    if (store.activeAdapter?.onReaderClose) {
+      store.activeAdapter.onReaderClose(store.imageOffset + store.currentImageIndex);
+    }
   }
 
   store.on('settingsChanged', () => {
@@ -553,6 +549,16 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
        autoPlay.start();
     } else {
       autoPlay.stop();
+    }
+    const btn = document.querySelector('.pswp__button--slideshow');
+    if (btn) btn.innerHTML = store.autoPlay ? svgPause : svgPlay;
+  });
+
+  store.on('readerModeChanged', () => {
+    if (!isActive || !pswp) return;
+    const el = document.querySelector('.pswp__counter');
+    if (el) {
+      el.innerHTML = `${store.imageOffset + pswp.currIndex + 1} / ${store.imageOffset + store.allImages.length}`;
     }
   });
 

@@ -7,8 +7,8 @@ export interface SidebarHandle {
   wakeUpProgressBar: () => void;
 }
 
-const ITEM_HEIGHT = 80;
-const VISIBLE_COUNT = 12;
+const ITEM_WIDTH = 72;
+const VISIBLE_COUNT = 15;
 const BUFFER = 3;
 
 export function createSidebar(
@@ -52,7 +52,7 @@ export function createSidebar(
   let clickedFromPanel = false;
   const itemPool: HTMLElement[] = [];
   const activeItems = new Map<number, HTMLElement>();
-  let cachedTrackHeight = 0;
+  let cachedTrackWidth = 0;
 
   // --- MOUSE & SCROLL TRACKING ---
   let progressWakeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -91,9 +91,9 @@ export function createSidebar(
       return;
     }
 
-    const dx = window.innerWidth - e.clientX;
+    const dy = window.innerHeight - e.clientY;
     
-    if (dx <= 140) {
+    if (dy <= 140) {
       openPanel();
     } else {
       closePanel();
@@ -107,10 +107,10 @@ export function createSidebar(
 
   document.documentElement.addEventListener('mouseleave', closePanel);
 
-  function refreshTrackHeight(): void {
-    cachedTrackHeight = progressTrack.offsetHeight;
+  function refreshTrackWidth(): void {
+    cachedTrackWidth = progressTrack.offsetWidth;
   }
-  window.addEventListener('resize', refreshTrackHeight, { passive: true });
+  window.addEventListener('resize', refreshTrackWidth, { passive: true });
 
   document.addEventListener('sp-image-loaded', (e: Event) => {
     const detail = (e as CustomEvent).detail;
@@ -127,14 +127,14 @@ export function createSidebar(
     return Math.max(min, Math.min(max, val));
   }
 
-  function vpHeight(): number {
-    // Return the actual pixel height rendered by CSS flexbox, 
-    // or fallback to a calculated height if not yet attached to DOM
-    return viewport.offsetHeight || Math.min(VISIBLE_COUNT * ITEM_HEIGHT, store.allImages.length * ITEM_HEIGHT);
+  function vpWidth(): number {
+    // Return the actual pixel width rendered by CSS flexbox, 
+    // or fallback to a calculated width if not yet attached to DOM
+    return viewport.offsetWidth || Math.min(VISIBLE_COUNT * ITEM_WIDTH, store.allImages.length * ITEM_WIDTH);
   }
 
   function maxOffset(): number {
-    return Math.max(0, store.allImages.length * ITEM_HEIGHT - vpHeight());
+    return Math.max(0, store.allImages.length * ITEM_WIDTH - vpWidth());
   }
 
   function acquireItem(): HTMLElement {
@@ -244,13 +244,13 @@ export function createSidebar(
     const total = store.allImages.length;
     if (total === 0) return;
 
-    const vp = vpHeight();
-    content.style.height = `${total * ITEM_HEIGHT}px`;
+    const vp = vpWidth();
+    content.style.width = `${total * ITEM_WIDTH}px`;
 
     scrollOffset = clamp(scrollOffset, 0, maxOffset());
 
-    const startIdx = Math.max(0, Math.floor(scrollOffset / ITEM_HEIGHT) - BUFFER);
-    const endIdx = Math.min(total - 1, Math.ceil((scrollOffset + vp) / ITEM_HEIGHT) + BUFFER);
+    const startIdx = Math.max(0, Math.floor(scrollOffset / ITEM_WIDTH) - BUFFER);
+    const endIdx = Math.min(total - 1, Math.ceil((scrollOffset + vp) / ITEM_WIDTH) + BUFFER);
 
     for (const [idx, el] of activeItems) {
       if (idx < startIdx || idx > endIdx) {
@@ -266,29 +266,29 @@ export function createSidebar(
         activeItems.set(i, el);
         content.appendChild(el);
       }
-      el.style.transform = `translateY(${i * ITEM_HEIGHT}px)`;
+      el.style.transform = `translateX(${i * ITEM_WIDTH}px)`;
       renderItemContent(el, i);
     }
 
-    content.style.transform = `translateY(${-scrollOffset}px)`;
+    content.style.transform = `translateX(${-scrollOffset}px)`;
     
     triggerLazyLoadForVisible();
   }
 
   function centerOnCurrent(): void {
-    const vp = vpHeight();
-    const target = store.currentImageIndex * ITEM_HEIGHT - vp / 2 + ITEM_HEIGHT / 2;
+    const vp = vpWidth();
+    const target = store.currentImageIndex * ITEM_WIDTH - vp / 2 + ITEM_WIDTH / 2;
     scrollOffset = clamp(target, 0, maxOffset());
   }
 
   function ensureVisible(): void {
-    const vp = vpHeight();
-    const itemTop = store.currentImageIndex * ITEM_HEIGHT;
-    const itemBottom = itemTop + ITEM_HEIGHT;
-    if (itemTop < scrollOffset) {
-      scrollOffset = itemTop;
-    } else if (itemBottom > scrollOffset + vp) {
-      scrollOffset = itemBottom - vp;
+    const vp = vpWidth();
+    const itemLeft = store.currentImageIndex * ITEM_WIDTH;
+    const itemRight = itemLeft + ITEM_WIDTH;
+    if (itemLeft < scrollOffset) {
+      scrollOffset = itemLeft;
+    } else if (itemRight > scrollOffset + vp) {
+      scrollOffset = itemRight - vp;
     }
     scrollOffset = clamp(scrollOffset, 0, maxOffset());
   }
@@ -312,24 +312,24 @@ export function createSidebar(
     counter.textContent = displayLabel;
 
     // Progress bar updates
-    if (!cachedTrackHeight) refreshTrackHeight();
-    const trackHeight = cachedTrackHeight;
-    let thumbHeight: number;
+    if (!cachedTrackWidth) refreshTrackWidth();
+    const trackWidth = cachedTrackWidth;
+    let thumbWidth: number;
 
     if (store.allImages.length <= 10) {
-      thumbHeight = 60;
+      thumbWidth = 60;
     } else if (store.allImages.length <= 50) {
-      thumbHeight = Math.max(60, trackHeight * (10 / store.allImages.length));
+      thumbWidth = Math.max(60, trackWidth * (10 / store.allImages.length));
     } else {
-      thumbHeight = Math.max(60, trackHeight * (5 / store.allImages.length));
+      thumbWidth = Math.max(60, trackWidth * (5 / store.allImages.length));
     }
 
     const scrollProgress = store.currentImageIndex / Math.max(1, store.allImages.length - 1);
-    const maxThumbTop = trackHeight - thumbHeight;
-    const thumbTop = scrollProgress * maxThumbTop;
+    const maxThumbLeft = trackWidth - thumbWidth;
+    const thumbLeft = scrollProgress * maxThumbLeft;
 
-    progressThumb.style.height = `${thumbHeight}px`;
-    progressThumb.style.top = `${thumbTop}px`;
+    progressThumb.style.width = `${thumbWidth}px`;
+    progressThumb.style.left = `${thumbLeft}px`;
     progressLabel.textContent = displayLabel;
   }
 
@@ -337,12 +337,12 @@ export function createSidebar(
   viewport.addEventListener('wheel', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    scrollOffset = clamp(scrollOffset + e.deltaY, 0, maxOffset());
+    scrollOffset = clamp(scrollOffset + e.deltaY + e.deltaX, 0, maxOffset());
     renderVisibleItems();
-    if (onScrollToBottom && scrollOffset >= maxOffset() - ITEM_HEIGHT) {
+    if (onScrollToBottom && scrollOffset >= maxOffset() - ITEM_WIDTH) {
       onScrollToBottom();
     }
-    if (onScrollToTop && scrollOffset <= ITEM_HEIGHT) {
+    if (onScrollToTop && scrollOffset <= ITEM_WIDTH) {
       onScrollToTop();
     }
   }, { passive: false });
@@ -364,8 +364,8 @@ export function createSidebar(
   progressTrack.onclick = (e) => {
     if (e.target === progressThumb) return;
     const rect = progressTrack.getBoundingClientRect();
-    const clickY = e.clientY - rect.top;
-    const scrollProgress = Math.min(1, Math.max(0, clickY / rect.height));
+    const clickX = e.clientX - rect.left;
+    const scrollProgress = Math.min(1, Math.max(0, clickX / rect.width));
     const targetIndex = Math.round(scrollProgress * (store.allImages.length - 1));
     if (targetIndex >= 0 && targetIndex < store.allImages.length) {
       onIndexChange(targetIndex);
@@ -373,27 +373,27 @@ export function createSidebar(
   };
 
   let isDragging = false;
-  let dragStartY = 0;
-  let thumbStartTop = 0;
+  let dragStartX = 0;
+  let thumbStartLeft = 0;
 
   progressThumb.onmousedown = (e) => {
     e.preventDefault();
     e.stopPropagation();
     isDragging = true;
-    dragStartY = e.clientY;
-    thumbStartTop = progressThumb.offsetTop;
+    dragStartX = e.clientX;
+    thumbStartLeft = progressThumb.offsetLeft;
     document.body.style.userSelect = 'none';
   };
 
   document.addEventListener('mousemove', (e) => {
     if (!isDragging) return;
-    const deltaY = e.clientY - dragStartY;
-    const newTop = thumbStartTop + deltaY;
-    const trackHeight = cachedTrackHeight;
-    const thumbHeight = progressThumb.offsetHeight;
-    const maxTop = trackHeight - thumbHeight;
-    const clampedTop = Math.max(0, Math.min(maxTop, newTop));
-    const scrollProgress = maxTop > 0 ? clampedTop / maxTop : 0;
+    const deltaX = e.clientX - dragStartX;
+    const newLeft = thumbStartLeft + deltaX;
+    const trackWidth = cachedTrackWidth;
+    const thumbWidth = progressThumb.offsetWidth;
+    const maxLeft = trackWidth - thumbWidth;
+    const clampedLeft = Math.max(0, Math.min(maxLeft, newLeft));
+    const scrollProgress = maxLeft > 0 ? clampedLeft / maxLeft : 0;
     const targetIndex = Math.round(scrollProgress * (store.allImages.length - 1));
     if (targetIndex >= 0 && targetIndex < store.allImages.length && targetIndex !== store.currentImageIndex) {
       onIndexChange(targetIndex);

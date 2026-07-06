@@ -74,9 +74,27 @@ export const EHentaiAdapter: SiteAdapter = {
     // Determine current image offset for reader mode (if applicable)
     if (gpc) {
       const txt = gpc.textContent ?? '';
-      const m = txt.match(/Showing\s+([\d,]+)\s*-\s*([\d,]+)\s+of\s+([\d,]+)/);
+      const m = txt.match(/([\d,]+)\s*-\s*([\d,]+)[^\d]+([\d,]+)/);
       if (m) {
-        store.imageOffset = parseInt(m[1].replace(/,/g, '')) - 1;
+        const start = parseInt(m[1].replace(/,/g, ''));
+        const end = parseInt(m[2].replace(/,/g, ''));
+        const total = parseInt(m[3].replace(/,/g, ''));
+        store.imageOffset = start - 1;
+
+        if (start === 1) {
+          store.perPage = end;
+        } else if (end < total) {
+          store.perPage = end - start + 1;
+        } else {
+          // Guess based on offset if on last page
+          const offset = start - 1;
+          if (offset % 200 === 0) store.perPage = 200;
+          else if (offset % 100 === 0) store.perPage = 100;
+          else if (offset % 50 === 0) store.perPage = 50;
+          else if (offset % 40 === 0) store.perPage = 40;
+          else if (offset % 20 === 0) store.perPage = 20;
+          else store.perPage = initLinks.length;
+        }
       }
     }
 
@@ -159,5 +177,22 @@ export const EHentaiAdapter: SiteAdapter = {
       return { w: parseInt(m[1], 10), h: parseInt(m[2], 10) };
     }
     return null;
+  },
+
+  getNativeImages() {
+    return Array.from(qa('#gdt a', document)) as HTMLElement[];
+  },
+
+  onReaderClose(globalIndex: number) {
+    if (store.settings.scrollMode) return;
+    
+    const targetPage = Math.floor(globalIndex / store.perPage);
+    const url = new URL(window.location.href);
+    const currentPage = parseInt(url.searchParams.get("p") || "0", 10);
+    
+    if (targetPage !== currentPage) {
+      url.searchParams.set("p", String(targetPage));
+      window.location.href = url.toString();
+    }
   }
 };
