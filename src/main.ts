@@ -24,7 +24,9 @@ import { createFloatControl } from './ui/float-control';
   store.totalPage = initData.totalPage ?? 1;
   store.nextUrl = initData.nextUrl;
   store.prevUrl = initData.prevUrl;
-  store.perPage = initData.links.length || 20;
+  if (!store.perPage) {
+    store.perPage = initData.links.length || 20;
+  }
 
   if (store.imageOffset > 0 && store.perPage > 0) {
     store.currPage = Math.floor(store.imageOffset / store.perPage) + 1;

@@ -51,27 +51,18 @@ export const EHentaiAdapter: SiteAdapter = {
   async init(doc: Document) {
     const initLinks = extractLinks(doc);
     
-    // Parse total pages
+    // Parse total pages accurately by looking at all pagination cells
     let totalPage = 1;
-    const gpc = q('.gpc', doc);
-    if (gpc) {
-      const txt = gpc.textContent ?? '';
-      const m = txt.match(/of\s+([\d,]+)\s+images/);
-      if (m && m[1]) {
-        const totalImgs = parseInt(m[1].replace(/,/g, ''));
-        const perPage = initLinks.length || 20;
-        totalPage = Math.ceil(totalImgs / perPage);
-      }
-    } else {
-      const allLinks = Array.from(qa('.ptt td a', doc));
-      const lastA = allLinks.pop();
-      if (lastA) {
-        const t = parseInt(lastA.textContent ?? '');
-        if (!isNaN(t)) totalPage = t;
+    const pttTds = Array.from(qa('.ptt td', doc));
+    for (const td of pttTds) {
+      const t = parseInt(td.textContent ?? '');
+      if (!isNaN(t) && t > totalPage) {
+        totalPage = t;
       }
     }
 
     // Determine current image offset for reader mode (if applicable)
+    const gpc = q('.gpc', doc);
     if (gpc) {
       const txt = gpc.textContent ?? '';
       const m = txt.match(/([\d,]+)\s*-\s*([\d,]+)[^\d]+([\d,]+)/);
@@ -86,14 +77,13 @@ export const EHentaiAdapter: SiteAdapter = {
         } else if (end < total) {
           store.perPage = end - start + 1;
         } else {
-          // Guess based on offset if on last page
+          // Mathematically calculate perPage if on last page
           const offset = start - 1;
-          if (offset % 200 === 0) store.perPage = 200;
-          else if (offset % 100 === 0) store.perPage = 100;
-          else if (offset % 50 === 0) store.perPage = 50;
-          else if (offset % 40 === 0) store.perPage = 40;
-          else if (offset % 20 === 0) store.perPage = 20;
-          else store.perPage = initLinks.length;
+          if (totalPage > 1) {
+            store.perPage = Math.round(offset / (totalPage - 1));
+          } else {
+            store.perPage = initLinks.length;
+          }
         }
       }
     }
