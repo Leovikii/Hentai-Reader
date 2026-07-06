@@ -6,7 +6,6 @@ import { SiteManager } from './sites/site-manager';
 import { processBatch, setupAutoScroll } from './features/scroll-mode';
 import { initSinglePageMode } from './features/single-page-mode';
 import { createFloatControl } from './ui/float-control';
-import { registerMenuCommands } from './menu-commands';
 
 
 (async function main() {
@@ -62,8 +61,7 @@ import { registerMenuCommands } from './menu-commands';
 
   spmHandle = initSinglePageMode();
 
-  // Menu commands
-  registerMenuCommands();
+
 
   // Auto enter reader mode
   if (store.settings.autoEnterSinglePage) {

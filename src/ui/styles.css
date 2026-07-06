@@ -16,49 +16,50 @@ html.scroll-mode #gdt { display: flex; flex-direction: column; align-items: cent
 .retry-btn:hover { background: #555; }
 
 
-/* Float control — horizontal: [play] [circle] [settings] */
-.float-control { position: fixed; right: 30px; bottom: 30px; z-index: 2147483647; display: flex; flex-direction: row; align-items: center; transition: opacity 0.3s, transform 0.3s; -webkit-user-select: none; user-select: none; opacity: 0.4; }
-.float-control:hover { opacity: 1; }
-.float-control.hidden { opacity: 0; pointer-events: none; }
+/* Floating Bookmark Control */
+.bookmark-control { position: fixed; z-index: 2147483647; display: flex; flex-direction: column; align-items: center; background: rgba(30, 30, 30, 0.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 24px; padding: 12px 6px; gap: 12px; transition: opacity 0.3s, left 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), right 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); box-shadow: 0 4px 16px rgba(0,0,0,0.3); -webkit-user-select: none; user-select: none; touch-action: none; transform: translateY(-50%); }
+.bookmark-control.hidden { opacity: 0; pointer-events: none; }
+.bookmark-control:not(.dragging) { opacity: 0.4; }
+.bookmark-control:not(.dragging):hover { opacity: 1; }
+.bookmark-control.left-side { left: 0; border-radius: 0 24px 24px 0; border-left: none; padding: 12px 6px 12px 2px; }
+.bookmark-control.right-side { right: 0; border-radius: 24px 0 0 24px; border-right: none; padding: 12px 2px 12px 6px; }
 
-/* Top button (above the circle control) */
-.side-btn.top-btn { position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%); opacity: 0.3; pointer-events: auto; }
-.float-control:hover .side-btn.top-btn { opacity: 0.8; }
-.side-btn.top-btn:hover { opacity: 1 !important; background: #555; transform: translateX(-50%) scale(1.1); }
+/* Buttons inside Bookmark */
+.bm-btn { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; background: transparent; }
+.bm-btn:hover { background: rgba(255, 255, 255, 0.1); transform: scale(1.1); }
+.bm-btn svg { width: 20px; height: 20px; fill: #fff; opacity: 0.8; }
+.bm-btn:hover svg { opacity: 1; }
 
-/* Side buttons (play & settings) */
-.side-btn { width: 36px; height: 36px; background: #333; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.3s; opacity: 0; pointer-events: none; }
-.float-control:hover .side-btn { opacity: 1; pointer-events: auto; }
-.side-btn:hover { background: #555; transform: scale(1.1); }
-.side-btn svg { width: 18px; height: 18px; fill: #fff; }
-.side-btn.active { background: var(--accent); }
-.side-btn.active:hover { background: var(--accent-hover); }
-.auto-play-btn.hidden { display: none; }
+.bm-mode-btn { background: var(--accent); width: 44px; height: 44px; box-shadow: 0 2px 8px rgba(245, 150, 170, 0.4); }
+.bm-mode-btn:hover { background: var(--accent-hover); box-shadow: 0 4px 12px rgba(245, 150, 170, 0.6); transform: scale(1.05); }
+.bm-mode-btn svg { width: 22px; height: 22px; opacity: 1; }
 
-/* Circle control — reader mode button */
-.circle-control { position: relative; width: 50px; height: 50px; background: #1a1a1a; border: 2px solid #555; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.3s; box-shadow: 0 4px 12px rgba(0,0,0,0.5); margin: 0 6px; }
-.circle-control:hover { border-color: #888; box-shadow: 0 6px 16px rgba(0,0,0,0.7); transform: scale(1.05); }
-.circle-control svg { width: 24px; height: 24px; fill: #fff; }
+/* Bottom Sheet Settings */
+.settings-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2147483648; opacity: 0; pointer-events: none; transition: opacity 0.3s; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+.settings-backdrop.show { opacity: 1; pointer-events: auto; }
+.settings-bottom-sheet { position: absolute; bottom: -100%; left: 0; width: 100%; background: #1a1a1a; border-radius: 24px 24px 0 0; padding: 0 20px 30px; box-sizing: border-box; transition: bottom 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); box-shadow: 0 -4px 20px rgba(0,0,0,0.5); border-top: 1px solid rgba(255, 255, 255, 0.05); }
+.settings-backdrop.show .settings-bottom-sheet { bottom: 0; }
+@media (min-width: 600px) {
+  .settings-bottom-sheet { max-width: 400px; left: 50%; transform: translateX(-50%); border-radius: 16px 16px 0 0; border: 1px solid rgba(255, 255, 255, 0.05); border-bottom: none; }
+}
 
-/* Settings button & panel */
-.settings-btn { cursor: pointer; }
-.settings-panel { position: absolute; bottom: calc(100% + 10px); right: 0; background: #1a1a1a; border: 1px solid #555; border-radius: 8px; padding: 12px; min-width: 180px; opacity: 0; pointer-events: none; transition: all 0.3s; box-shadow: 0 4px 12px rgba(0,0,0,0.5); transform: translateY(5px); }
-.settings-panel.show { opacity: 1; pointer-events: auto; transform: translateY(0); }
+.settings-sheet-header { width: 100%; height: 30px; display: flex; justify-content: center; align-items: center; margin-bottom: 10px; }
+.settings-drag-handle { width: 40px; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px; }
 
 /* Settings items */
-.settings-item { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 13px; color: #ccc; }
+.settings-item { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; font-size: 15px; color: #eee; }
 .settings-item:last-child { margin-bottom: 0; }
-.settings-label { margin-right: 10px; white-space: nowrap; }
+.settings-label { margin-right: 10px; white-space: nowrap; font-weight: 500; }
 
 /* Toggle switch */
-.toggle-switch { width: 40px; height: 20px; background: #333; border-radius: 10px; position: relative; cursor: pointer; transition: background 0.3s; }
+.toggle-switch { width: 44px; height: 24px; background: #333; border-radius: 12px; position: relative; cursor: pointer; transition: background 0.3s; }
 .toggle-switch.on { background: var(--accent); }
-.toggle-slider { width: 16px; height: 16px; background: #fff; border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: left 0.3s; }
+.toggle-slider { width: 20px; height: 20px; background: #fff; border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: left 0.3s; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
 .toggle-switch.on .toggle-slider { left: 22px; }
 
 /* Interval input */
-.interval-input { width: 60px; background: #333; border: 1px solid #555; border-radius: 4px; color: #fff; padding: 4px 8px; font-size: 12px; text-align: center; }
-.interval-input:focus { outline: none; border-color: #888; }
+.interval-input { width: 60px; background: rgba(255,255,255,0.1); border: 1px solid transparent; border-radius: 6px; color: #fff; padding: 6px 10px; font-size: 14px; text-align: center; transition: background 0.2s, border 0.2s; }
+.interval-input:focus { outline: none; background: rgba(0,0,0,0.2); border-color: var(--accent); }
 
 
 .sp-close-btn { position: absolute; top: 20px; right: 20px; width: 40px; height: 40px; background: rgba(51,51,51,0.8); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 24px; color: #fff; transition: all 0.3s; z-index: 10; pointer-events: auto; }

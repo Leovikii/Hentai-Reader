@@ -7,3 +7,5 @@ export const svgPlay = `<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
 export const svgPause = `<svg viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg>`;
 
 export const svgTop = `<svg viewBox="0 0 24 24"><path d="M4 4h16v2H4V4zm4 8l1.41 1.41L11 11.83V22h2V11.83l1.59 1.58L16 12l-4-4-4 4z"/></svg>`;
+
+export const svgScroll = `<svg viewBox="0 0 24 24"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></svg>`;

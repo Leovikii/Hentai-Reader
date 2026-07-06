@@ -1,62 +1,30 @@
 import { store } from '../state/store';
-import { svgReader, svgPlay, svgPause, svgSettings, svgTop } from '../utils/icons';
+import { svgReader, svgSettings, svgTop, svgScroll } from '../utils/icons';
 import { createSettingsPanel } from './settings-panel';
 import { i18n } from '../utils/i18n';
 import type { SinglePageModeHandle } from '../types';
 
 export function createFloatControl(spmHandle: SinglePageModeHandle): void {
   const floatControl = document.createElement('div');
-  floatControl.className = `float-control${store.settings.showControl ? '' : ' hidden'}`;
+  floatControl.className = `bookmark-control${store.settings.showControl ? '' : ' hidden'}`;
 
-  // Auto-play button (left, hidden until reader mode opens)
-  const autoPlayBtn = document.createElement('div');
-  autoPlayBtn.className = `side-btn auto-play-btn hidden${store.autoPlay ? ' active' : ''}`;
-  autoPlayBtn.innerHTML = store.autoPlay ? svgPause : svgPlay;
-  autoPlayBtn.title = i18n.autoPlay;
-  autoPlayBtn.onclick = (e) => {
-    e.stopPropagation();
-    const newValue = !store.autoPlay;
-    store.autoPlay = newValue;
-    store.emit('settingsChanged');
-    autoPlayBtn.innerHTML = newValue ? svgPause : svgPlay;
-    autoPlayBtn.classList.toggle('active', newValue);
-  };
+  // Read saved position
+  let savedPos = { side: 'right', topPercent: 50 };
+  try {
+    const raw = localStorage.getItem('hentai-reader-bookmark-pos');
+    if (raw) savedPos = JSON.parse(raw);
+  } catch (e) {}
 
-  // Center circle — reader mode toggle
-  const circleControl = document.createElement('div');
-  circleControl.className = 'circle-control';
-  circleControl.innerHTML = svgReader;
-  circleControl.title = i18n.readerMode;
-  circleControl.onclick = (e) => {
-    if (e.target !== circleControl && !circleControl.querySelector('svg')?.contains(e.target as Node)) return;
-    if (spmHandle.isActive()) {
-      spmHandle.close();
-    } else {
-      spmHandle.open();
-    }
-  };
+  if (savedPos.side === 'left') {
+    floatControl.classList.add('left-side');
+  } else {
+    floatControl.classList.add('right-side');
+  }
+  floatControl.style.top = `${savedPos.topPercent}%`;
 
-  // Sync play button visibility with reader mode state (works for both manual and auto-enter)
-  store.on('readerModeChanged', () => {
-    if (spmHandle.isActive()) {
-      autoPlayBtn.classList.remove('hidden');
-      autoPlayBtn.innerHTML = store.autoPlay ? svgPause : svgPlay;
-      autoPlayBtn.classList.toggle('active', store.autoPlay);
-    } else {
-      autoPlayBtn.classList.add('hidden');
-    }
-  });
-
-  // Settings button (right)
-  const settings = createSettingsPanel();
-  const settingsBtn = settings.getButtonElement();
-  settingsBtn.className = 'side-btn';
-  settingsBtn.innerHTML = svgSettings;
-  settingsBtn.title = i18n.settings;
-
-  // Back to top button (above the control bar)
+  // Buttons: Top -> Mode -> Settings
   const topBtn = document.createElement('div');
-  topBtn.className = 'side-btn top-btn';
+  topBtn.className = 'bm-btn bm-top-btn';
   topBtn.innerHTML = svgTop;
   topBtn.title = i18n.backToTop;
   topBtn.onclick = (e) => {
@@ -65,17 +33,104 @@ export function createFloatControl(spmHandle: SinglePageModeHandle): void {
       spmHandle.jumpTo(0);
     } else {
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      document.documentElement.scrollTo({ top: 0, behavior: 'smooth' });
-      document.body.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
-  // Assemble horizontally: [play] [circle] [settings], with top button above circle
-  circleControl.appendChild(topBtn);
-  floatControl.appendChild(autoPlayBtn);
-  floatControl.appendChild(circleControl);
+  const modeBtn = document.createElement('div');
+  modeBtn.className = 'bm-btn bm-mode-btn';
+  modeBtn.innerHTML = svgReader;
+  modeBtn.title = i18n.readerMode;
+  modeBtn.onclick = (e) => {
+    e.stopPropagation();
+    if (spmHandle.isActive()) {
+      spmHandle.close();
+    } else {
+      spmHandle.open();
+    }
+  };
+
+  // Sync mode button icon
+  store.on('readerModeChanged', () => {
+    modeBtn.innerHTML = spmHandle.isActive() ? svgScroll : svgReader;
+  });
+
+  const settings = createSettingsPanel();
+  document.body.appendChild(settings.getContainerElement()); // Append bottom sheet to body
+
+  const settingsBtn = document.createElement('div');
+  settingsBtn.className = 'bm-btn bm-settings-btn';
+  settingsBtn.innerHTML = svgSettings;
+  settingsBtn.title = i18n.settings;
+  settingsBtn.onclick = (e) => {
+    e.stopPropagation();
+    settings.show();
+  };
+
+  floatControl.appendChild(topBtn);
+  floatControl.appendChild(modeBtn);
   floatControl.appendChild(settingsBtn);
-  floatControl.appendChild(settings.getPanelElement());
 
   document.body.appendChild(floatControl);
+
+  // Dragging logic
+  let isDragging = false;
+  let startY = 0;
+  let startTop = 0;
+  let dragMoved = false;
+
+  floatControl.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    
+    isDragging = true;
+    dragMoved = false;
+    startY = e.clientY;
+    
+    const rect = floatControl.getBoundingClientRect();
+    startTop = rect.top + rect.height / 2;
+
+    floatControl.classList.add('dragging');
+  });
+
+  window.addEventListener('pointermove', (e) => {
+    if (!isDragging) return;
+    
+    const deltaY = e.clientY - startY;
+    if (Math.abs(deltaY) > 5) dragMoved = true;
+
+    const newCenterY = startTop + deltaY;
+    const maxCenterY = window.innerHeight - (floatControl.offsetHeight / 2);
+    const minCenterY = floatControl.offsetHeight / 2;
+    const clampedY = Math.max(minCenterY, Math.min(maxCenterY, newCenterY));
+
+    floatControl.style.top = `${clampedY}px`;
+    
+    if (e.clientX < window.innerWidth / 2) {
+       floatControl.classList.remove('right-side');
+       floatControl.classList.add('left-side');
+    } else {
+       floatControl.classList.remove('left-side');
+       floatControl.classList.add('right-side');
+    }
+  });
+
+  window.addEventListener('pointerup', (e) => {
+    if (!isDragging) return;
+    isDragging = false;
+    floatControl.classList.remove('dragging');
+
+    const rect = floatControl.getBoundingClientRect();
+    const centerPercent = ((rect.top + rect.height / 2) / window.innerHeight) * 100;
+    const side = e.clientX < window.innerWidth / 2 ? 'left' : 'right';
+
+    floatControl.style.top = `${centerPercent}%`;
+
+    localStorage.setItem('hentai-reader-bookmark-pos', JSON.stringify({ side, topPercent: centerPercent }));
+  });
+  
+  floatControl.addEventListener('click', (e) => {
+    if (dragMoved) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }, { capture: true });
 }

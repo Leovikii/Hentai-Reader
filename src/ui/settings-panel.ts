@@ -2,8 +2,9 @@ import { store } from '../state/store';
 import { i18n } from '../utils/i18n';
 
 export interface SettingsPanelHandle {
-  getButtonElement: () => HTMLElement;
-  getPanelElement: () => HTMLElement;
+  getContainerElement: () => HTMLElement;
+  show: () => void;
+  hide: () => void;
 }
 
 interface SettingItem {
@@ -18,11 +19,19 @@ const SETTINGS: SettingItem[] = [
 ];
 
 export function createSettingsPanel(): SettingsPanelHandle {
-  const settingsBtn = document.createElement('div');
-  settingsBtn.className = 'settings-btn';
+  const backdrop = document.createElement('div');
+  backdrop.className = 'settings-backdrop';
 
-  const settingsPanel = document.createElement('div');
-  settingsPanel.className = 'settings-panel';
+  const bottomSheet = document.createElement('div');
+  bottomSheet.className = 'settings-bottom-sheet';
+
+  // Header/drag handle area for aesthetics
+  const sheetHeader = document.createElement('div');
+  sheetHeader.className = 'settings-sheet-header';
+  const dragHandle = document.createElement('div');
+  dragHandle.className = 'settings-drag-handle';
+  sheetHeader.appendChild(dragHandle);
+  bottomSheet.appendChild(sheetHeader);
 
   SETTINGS.forEach(({ label, key }) => {
     if (key === 'scrollMode' && store.activeAdapter && ['18comic', '4KHD'].includes(store.activeAdapter.name)) {
@@ -42,7 +51,8 @@ export function createSettingsPanel(): SettingsPanelHandle {
     slider.className = 'toggle-slider';
     toggle.appendChild(slider);
 
-    toggle.onclick = () => {
+    toggle.onclick = (e) => {
+      e.stopPropagation();
       const newValue = !store.settings[key];
       store.updateSetting(key, newValue);
       toggle.classList.toggle('on', newValue);
@@ -53,7 +63,7 @@ export function createSettingsPanel(): SettingsPanelHandle {
 
     item.appendChild(labelEl);
     item.appendChild(toggle);
-    settingsPanel.appendChild(item);
+    bottomSheet.appendChild(item);
   });
 
   // Auto-play interval setting
@@ -90,21 +100,27 @@ export function createSettingsPanel(): SettingsPanelHandle {
   intervalRight.appendChild(intervalUnit);
   intervalItem.appendChild(intervalLabel);
   intervalItem.appendChild(intervalRight);
-  settingsPanel.appendChild(intervalItem);
+  bottomSheet.appendChild(intervalItem);
 
-  settingsBtn.onclick = (e) => {
-    e.stopPropagation();
-    settingsPanel.classList.toggle('show');
+  backdrop.appendChild(bottomSheet);
+
+  const show = () => {
+    backdrop.classList.add('show');
   };
 
-  document.addEventListener('click', (e) => {
-    if (!settingsPanel.contains(e.target as Node) && !settingsBtn.contains(e.target as Node)) {
-      settingsPanel.classList.remove('show');
+  const hide = () => {
+    backdrop.classList.remove('show');
+  };
+
+  backdrop.onclick = (e) => {
+    if (e.target === backdrop) {
+      hide();
     }
-  });
+  };
 
   return {
-    getButtonElement: () => settingsBtn,
-    getPanelElement: () => settingsPanel,
+    getContainerElement: () => backdrop,
+    show,
+    hide,
   };
 }

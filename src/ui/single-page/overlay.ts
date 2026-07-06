@@ -9,6 +9,7 @@ import { createSidebar } from './sidebar';
 import { createAutoPlay } from './auto-play';
 import { createStatusHUD } from '../components/status-hud';
 import { i18n } from '../../utils/i18n';
+import { svgPlay, svgPause } from '../../utils/icons';
 import type { SinglePageModeHandle } from '../../types';
 
 export interface SinglePageOverlayDeps {
@@ -453,6 +454,30 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
     });
 
     pswp.on('uiRegister', () => {
+      if (pswp && pswp.ui) {
+        pswp.ui.registerElement({
+          name: 'slideshow',
+          order: 9,
+          isButton: true,
+          html: store.autoPlay ? svgPause : svgPlay,
+          onClick: (_event, el) => {
+            const newValue = !store.autoPlay;
+            store.autoPlay = newValue;
+            store.emit('settingsChanged');
+            el.innerHTML = newValue ? svgPause : svgPlay;
+            if (newValue) {
+               autoPlay.start();
+            } else {
+               autoPlay.stop();
+            }
+          }
+        });
+        store.on('settingsChanged', () => {
+           const btn = document.querySelector('.pswp__button--slideshow');
+           if (btn) btn.innerHTML = store.autoPlay ? svgPause : svgPlay;
+        });
+      }
+
       if (pswp && pswp.element) {
         // Append our custom sidebar directly to PhotoSwipe's container
         sidebar.getElements().forEach(el => {
