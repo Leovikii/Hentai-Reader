@@ -366,7 +366,11 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
       }
     });
 
-    let wheelDebounce: ReturnType<typeof setTimeout> | null = null;
+    let scrollAccumulator = 0;
+    let scrollDecayTimeout: ReturnType<typeof setTimeout> | null = null;
+    let scrollBatchTimeout: ReturnType<typeof setTimeout> | null = null;
+    const SCROLL_THRESHOLD = 80;
+
     pswp.on('wheel', (e) => {
       const slide = pswp?.currSlide;
       if (!slide) return;
@@ -379,15 +383,41 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
       // Otherwise, intercept wheel to switch pages
       e.preventDefault();
       
-      // Debounce the wheel event slightly to prevent accidental double-skips on smooth scrolling mice
-      if (wheelDebounce) return;
-      wheelDebounce = setTimeout(() => { wheelDebounce = null; }, 100);
-
       const event = e.originalEvent as WheelEvent;
-      if (event.deltaY > 0) {
-        pswp?.next();
-      } else if (event.deltaY < 0) {
-        pswp?.prev();
+      let delta = event.deltaY;
+      if (event.deltaMode === 1) delta *= 33;
+      else if (event.deltaMode === 2) delta *= window.innerHeight;
+
+      // Reset accumulator if scrolling direction changes
+      if (Math.sign(delta) !== Math.sign(scrollAccumulator) && scrollAccumulator !== 0) {
+        scrollAccumulator = 0;
+      }
+
+      scrollAccumulator += delta;
+
+      // Decay accumulator if user stops scrolling
+      if (scrollDecayTimeout) clearTimeout(scrollDecayTimeout);
+      scrollDecayTimeout = setTimeout(() => { scrollAccumulator = 0; }, 200);
+
+      // Batch rapid scroll events to calculate the jump distance
+      if (Math.abs(scrollAccumulator) >= SCROLL_THRESHOLD && !scrollBatchTimeout) {
+         scrollBatchTimeout = setTimeout(() => {
+             const pagesToJump = Math.trunc(scrollAccumulator / SCROLL_THRESHOLD);
+             if (pagesToJump !== 0) {
+                 let targetIndex = pswp!.currIndex + pagesToJump;
+                 targetIndex = Math.max(0, Math.min(store.allImages.length - 1, targetIndex));
+                 
+                 if (targetIndex !== pswp!.currIndex) {
+                     pswp!.goTo(targetIndex);
+                 }
+                 // Keep remainder for smooth trackpads, but cap it
+                 scrollAccumulator -= pagesToJump * SCROLL_THRESHOLD;
+                 if (Math.abs(scrollAccumulator) > SCROLL_THRESHOLD) {
+                     scrollAccumulator = Math.sign(scrollAccumulator) * (SCROLL_THRESHOLD - 1);
+                 }
+             }
+             scrollBatchTimeout = null;
+         }, 50); // 50ms batching window perfectly captures fast wheel flicks
       }
     });
 
