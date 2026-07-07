@@ -54,7 +54,7 @@ export function createFloatControl(spmHandle: SinglePageModeHandle): void {
     modeBtn.innerHTML = spmHandle.isActive() ? svgScroll : svgReader;
   });
 
-  const settings = createSettingsPanel();
+  const settings = createSettingsPanel(floatControl);
   document.body.appendChild(settings.getContainerElement()); // Append bottom sheet to body
 
   const settingsBtn = document.createElement('div');
@@ -84,6 +84,10 @@ export function createFloatControl(spmHandle: SinglePageModeHandle): void {
 
   floatControl.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
+    
+    if (settings.isOpen()) {
+      settings.hide();
+    }
     
     isDragging = true;
     dragMoved = false;

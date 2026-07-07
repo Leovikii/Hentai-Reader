@@ -19,7 +19,7 @@ const SETTINGS: SettingItem[] = [
   { label: i18n.autoEnter, key: 'autoEnterSinglePage' },
 ];
 
-export function createSettingsPanel(): SettingsPanelHandle {
+export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHandle {
   const backdrop = document.createElement('div');
   backdrop.className = 'settings-backdrop';
 
@@ -186,6 +186,31 @@ export function createSettingsPanel(): SettingsPanelHandle {
 
   const show = () => {
     backdrop.classList.add('show');
+    if (window.innerWidth > 768) {
+      requestAnimationFrame(() => {
+        const rect = anchorElement.getBoundingClientRect();
+        const panelRect = bottomSheet.getBoundingClientRect();
+        
+        let top = rect.top + rect.height / 2 - panelRect.height / 2;
+        top = Math.max(16, Math.min(window.innerHeight - panelRect.height - 16, top));
+        
+        bottomSheet.style.top = `${top}px`;
+        bottomSheet.style.bottom = 'auto';
+        
+        // Hardcode width for desktop to prevent CSS transition measurement issues
+        const panelWidth = 340;
+        
+        if (rect.left < window.innerWidth / 2) {
+          bottomSheet.style.left = `${rect.right + 20}px`;
+          bottomSheet.style.transformOrigin = 'left center';
+        } else {
+          bottomSheet.style.left = `${rect.left - panelWidth - 20}px`;
+          bottomSheet.style.transformOrigin = 'right center';
+        }
+      });
+    } else {
+      bottomSheet.style.cssText = '';
+    }
   };
 
   const hide = () => {

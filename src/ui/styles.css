@@ -40,7 +40,9 @@ html.scroll-mode #gdt { display: flex; flex-direction: column; align-items: cent
 .settings-bottom-sheet { position: absolute; bottom: -100%; left: 0; width: 100%; background: #1a1a1a; border-radius: 24px 24px 0 0; padding: 0 20px 30px; box-sizing: border-box; transition: bottom 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); box-shadow: 0 -4px 20px rgba(0,0,0,0.5); border-top: 1px solid rgba(255, 255, 255, 0.05); }
 .settings-backdrop.show .settings-bottom-sheet { bottom: 0; }
 @media (min-width: 768px) {
-  .settings-bottom-sheet { max-width: 480px; left: 50%; transform: translateX(-50%); border-radius: 16px 16px 0 0; border: 1px solid rgba(255, 255, 255, 0.05); border-bottom: none; }
+  .settings-backdrop { background: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .settings-bottom-sheet { position: absolute; width: 340px; border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 10px 40px rgba(0,0,0,0.5); padding: 0 20px 20px; transition: opacity 0.2s, transform 0.2s; opacity: 0; pointer-events: none; bottom: auto !important; left: auto; transform: scale(0.95); }
+  .settings-backdrop.show .settings-bottom-sheet { opacity: 1; pointer-events: auto; transform: scale(1); }
 }
 
 .settings-sheet-header { position: relative; width: 100%; height: 48px; display: flex; justify-content: center; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.05); }
