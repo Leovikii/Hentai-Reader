@@ -63,7 +63,11 @@ export function createFloatControl(spmHandle: SinglePageModeHandle): void {
   settingsBtn.title = i18n.settings;
   settingsBtn.onclick = (e) => {
     e.stopPropagation();
-    settings.show();
+    if (settings.isOpen()) {
+      settings.hide();
+    } else {
+      settings.show();
+    }
   };
 
   floatControl.appendChild(topBtn);

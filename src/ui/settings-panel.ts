@@ -5,6 +5,7 @@ export interface SettingsPanelHandle {
   getContainerElement: () => HTMLElement;
   show: () => void;
   hide: () => void;
+  isOpen: () => boolean;
 }
 
 interface SettingItem {
@@ -184,9 +185,12 @@ export function createSettingsPanel(): SettingsPanelHandle {
     }
   };
 
+  const isOpen = () => backdrop.classList.contains('show');
+
   return {
     getContainerElement: () => backdrop,
     show,
     hide,
+    isOpen,
   };
 }
