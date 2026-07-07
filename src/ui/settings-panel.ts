@@ -74,29 +74,54 @@ export function createSettingsPanel(): SettingsPanelHandle {
   intervalLabel.textContent = i18n.playSpeed;
 
   const intervalRight = document.createElement('div');
-  intervalRight.style.cssText = 'display:flex;align-items:center;gap:4px;';
+  intervalRight.className = 'stepper-control';
+
+  const minusBtn = document.createElement('div');
+  minusBtn.className = 'stepper-btn';
+  minusBtn.textContent = '−';
 
   const intervalInput = document.createElement('input');
   intervalInput.type = 'number';
   intervalInput.className = 'interval-input';
   intervalInput.min = '1';
   intervalInput.max = '60';
-  intervalInput.step = '0.5';
+  intervalInput.step = '1';
   intervalInput.value = String(store.settings.autoPlayInterval / 1000);
   intervalInput.onclick = (e) => e.stopPropagation();
-  intervalInput.onchange = (e) => {
-    const value = parseFloat((e.target as HTMLInputElement).value);
-    if (!isNaN(value) && value >= 1 && value <= 60) {
-      store.updateSetting('autoPlayInterval', value * 1000);
+
+  const plusBtn = document.createElement('div');
+  plusBtn.className = 'stepper-btn';
+  plusBtn.textContent = '+';
+
+  const updateInterval = (val: number) => {
+    if (!isNaN(val) && val >= 1 && val <= 60) {
+      intervalInput.value = String(val);
+      store.updateSetting('autoPlayInterval', val * 1000);
     }
   };
 
-  const intervalUnit = document.createElement('span');
-  intervalUnit.textContent = 's';
-  intervalUnit.style.cssText = 'font-size:12px;color:#888;';
+  intervalInput.onchange = (e) => {
+    updateInterval(parseFloat((e.target as HTMLInputElement).value));
+  };
 
+  minusBtn.onclick = (e) => {
+    e.stopPropagation();
+    let current = parseFloat(intervalInput.value);
+    if (isNaN(current)) current = 5;
+    updateInterval(Math.max(5, current - 5));
+  };
+
+  plusBtn.onclick = (e) => {
+    e.stopPropagation();
+    let current = parseFloat(intervalInput.value);
+    if (isNaN(current)) current = 5;
+    updateInterval(Math.min(60, current + 5));
+  };
+
+  intervalRight.appendChild(minusBtn);
   intervalRight.appendChild(intervalInput);
-  intervalRight.appendChild(intervalUnit);
+  intervalRight.appendChild(plusBtn);
+  
   intervalItem.appendChild(intervalLabel);
   intervalItem.appendChild(intervalRight);
   bottomSheet.appendChild(intervalItem);

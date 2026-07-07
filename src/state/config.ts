@@ -20,7 +20,7 @@ export function loadSettings(adapterName?: string): UserSettings {
     scrollMode: GM_getValue(`${prefix}scrollMode`, is4KHD ? true : globalScrollMode),
     showControl: GM_getValue('showControl', true),
     autoEnterSinglePage: GM_getValue('autoEnterSinglePage', false),
-    autoPlayInterval: GM_getValue('autoPlayInterval', 3000),
+    autoPlayInterval: GM_getValue('autoPlayInterval', 5000),
     thumbnailPosition: GM_getValue('thumbnailPosition', 'bottom'),
   };
 }

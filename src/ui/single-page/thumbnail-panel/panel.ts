@@ -89,7 +89,7 @@ export function createThumbnailPanel(
   }
 
   function getItemSize() {
-    return window.innerWidth <= 768 ? 120 : 72;
+    return window.innerWidth <= 768 ? 140 : 72;
   }
 
   function clamp(val: number, min: number, max: number): number {
