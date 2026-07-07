@@ -124,13 +124,11 @@ html.scroll-mode #gdt { display: flex; flex-direction: column; align-items: cent
 .sp-thumb-panel.position-right .sp-thumb-counter { bottom: -44px; left: 50%; transform: translateX(-50%); font-size: 14px; padding: 6px 16px; border-radius: 16px; }
 
 @media (max-width: 768px) {
-  .sp-thumb-panel.position-bottom { bottom: 16px; max-width: 95%; }
-  .sp-thumb-panel.position-top { top: 16px; max-width: 95%; }
-  .sp-thumb-panel.position-left { left: 16px; max-height: calc(100% - 140px); }
-  .sp-thumb-panel.position-right { right: 16px; max-height: calc(100% - 140px); }
+  .sp-thumb-panel.position-bottom { bottom: 16px; max-width: 60%; }
+  .sp-thumb-panel.position-top { top: 16px; max-width: 60%; }
+  .sp-thumb-panel.position-left { left: 16px; max-height: 60%; }
+  .sp-thumb-panel.position-right { right: 16px; max-height: 60%; }
   
-  .sp-thumb-panel.position-left .sp-thumb-counter { bottom: auto; top: 50%; right: -56px; transform: translateY(-50%); font-size: 12px; padding: 4px 10px; border-radius: 12px; }
-  .sp-thumb-panel.position-right .sp-thumb-counter { bottom: auto; top: 50%; left: -56px; transform: translateY(-50%); font-size: 12px; padding: 4px 10px; border-radius: 12px; }
 }
 
 /* Status HUD (Top-Center) */
