@@ -1,7 +1,7 @@
 import { store } from '../../../state/store';
 import { loadPlaceholderImage } from '../../../features/scroll-mode';
 
-const ITEM_SIZE = 72;
+
 const VISIBLE_COUNT = 15;
 const BUFFER = 3;
 
@@ -89,7 +89,7 @@ export function createThumbnailPanel(
   }
 
   function getItemSize() {
-    return ITEM_SIZE;
+    return window.innerWidth <= 768 ? 120 : 72;
   }
 
   function clamp(val: number, min: number, max: number): number {
@@ -98,9 +98,9 @@ export function createThumbnailPanel(
 
   function vpSize(): number {
     if (isVertical()) {
-      return viewport.offsetHeight || Math.min(VISIBLE_COUNT * ITEM_SIZE, store.allImages.length * ITEM_SIZE);
+      return viewport.offsetHeight || Math.min(VISIBLE_COUNT * getItemSize(), store.allImages.length * getItemSize());
     } else {
-      return viewport.offsetWidth || Math.min(VISIBLE_COUNT * ITEM_SIZE, store.allImages.length * ITEM_SIZE);
+      return viewport.offsetWidth || Math.min(VISIBLE_COUNT * getItemSize(), store.allImages.length * getItemSize());
     }
   }
 
