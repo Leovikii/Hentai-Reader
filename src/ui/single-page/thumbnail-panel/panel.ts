@@ -31,20 +31,47 @@ export function createThumbnailPanel(
   let clickedFromPanel = false;
   const itemPool: HTMLElement[] = [];
   const activeItems = new Map<number, HTMLElement>();
-
+  let hideTimeout: ReturnType<typeof setTimeout>;
   let isPanelActive = false;
 
-  function closePanel() {
-    if (!isPanelActive) return;
+  function openPanel(keepOpen = false): void {
+    if (store.allImages.length === 0) return;
+    clearTimeout(hideTimeout);
+    isPanelActive = true;
+    thumbPanel.classList.add('active');
+    
+    const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    
+    if (keepOpen) {
+      if (isTouchDevice) {
+        window.dispatchEvent(new CustomEvent('sp-mobile-ui-interaction-start'));
+      }
+    } else {
+      if (isTouchDevice) {
+        window.dispatchEvent(new CustomEvent('sp-mobile-ui-interaction-end'));
+      } else {
+        hideTimeout = setTimeout(() => {
+          closePanel();
+        }, 2000);
+      }
+    }
+  }
+
+  function closePanel(): void {
     isPanelActive = false;
     thumbPanel.classList.remove('active');
   }
 
-  function openPanel() {
-    if (isPanelActive) return;
-    isPanelActive = true;
-    thumbPanel.classList.add('active');
-  }
+  // Mouse interaction (ignore touch-simulated mouse events)
+  thumbPanel.addEventListener('pointerenter', (e: PointerEvent) => {
+    if (e.pointerType === 'mouse') openPanel(true);
+  });
+  thumbPanel.addEventListener('pointerleave', (e: PointerEvent) => {
+    if (e.pointerType === 'mouse') openPanel(false);
+  });
+  thumbPanel.addEventListener('pointermove', (e: PointerEvent) => {
+    if (e.pointerType === 'mouse') openPanel(true);
+  });
 
   document.addEventListener('sp-image-loaded', (e: Event) => {
     const detail = (e as CustomEvent).detail;
@@ -190,7 +217,7 @@ export function createThumbnailPanel(
 
     const vp = vpSize();
     const itemSize = getItemSize();
-    
+
     if (isVertical()) {
       content.style.width = '100%';
       content.style.height = `${total * itemSize + 16}px`;
@@ -284,7 +311,51 @@ export function createThumbnailPanel(
     if (onScrollToTop && scrollOffset <= getItemSize()) {
       onScrollToTop();
     }
+    openPanel(true);
+    clearTimeout(hideTimeout);
+    hideTimeout = setTimeout(() => openPanel(false), 500);
   }, { passive: false });
+
+  // Touch scrolling support
+  let touchStartPos = 0;
+  let touchStartScroll = 0;
+
+  viewport.addEventListener('touchstart', (e) => {
+    e.stopPropagation();
+    if (store.allImages.length === 0) return;
+    touchStartPos = isVertical() ? e.touches[0].clientY : e.touches[0].clientX;
+    touchStartScroll = scrollOffset;
+    openPanel(true); // Keep open while dragging
+  }, { passive: false });
+
+  viewport.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (store.allImages.length === 0) return;
+    const currentPos = isVertical() ? e.touches[0].clientY : e.touches[0].clientX;
+    const diff = touchStartPos - currentPos; // Swiping up means scroll down (positive diff)
+    scrollOffset = clamp(touchStartScroll + diff, 0, maxOffset());
+    renderVisibleItems();
+    openPanel(true); // Keep open while dragging
+    
+    // Check edge triggers
+    if (onScrollToBottom && scrollOffset >= maxOffset() - getItemSize()) {
+      onScrollToBottom();
+    }
+    if (onScrollToTop && scrollOffset <= getItemSize()) {
+      onScrollToTop();
+    }
+  }, { passive: false });
+
+  viewport.addEventListener('touchend', (e) => {
+    e.stopPropagation();
+    openPanel(false); // Restart timeout
+  });
+
+  viewport.addEventListener('touchcancel', (e) => {
+    e.stopPropagation();
+    openPanel(false); // Restart timeout
+  });
 
   content.addEventListener('click', (e) => {
     const item = (e.target as HTMLElement).closest('.sp-thumb-item') as HTMLElement | null;

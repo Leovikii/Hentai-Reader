@@ -7,6 +7,8 @@ export interface SidebarHandle {
   update: () => void;
   getElements: () => HTMLElement[];
   wakeUpProgressBar: () => void;
+  openPanel: (keepOpen?: boolean) => void;
+  closePanel: () => void;
 }
 
 export function createSidebar(
@@ -41,5 +43,7 @@ export function createSidebar(
     update,
     getElements: () => [progress.getElement(), panel.getElement()],
     wakeUpProgressBar: progress.wakeUp,
+    openPanel: panel.openPanel,
+    closePanel: panel.closePanel,
   };
 }

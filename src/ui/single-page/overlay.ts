@@ -144,6 +144,10 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
 
     store.currentImageIndex = startIndex;
     isActive = true;
+    
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+    
     store.emit('readerModeChanged');
 
     initPhotoSwipe(startIndex);
@@ -156,7 +160,8 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
   function initPhotoSwipe(startIndex: number) {
     let mobileUiTimeout: ReturnType<typeof setTimeout>;
     function triggerMobileUITimeout() {
-      if (!window.matchMedia('(hover: none) and (pointer: coarse)').matches) return;
+      const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+      if (!isTouchDevice) return;
       clearTimeout(mobileUiTimeout);
       mobileUiTimeout = setTimeout(() => {
         if (pswp && pswp.element) {
@@ -164,6 +169,13 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
         }
       }, 2000);
     }
+
+    function cancelMobileUITimeout() {
+      clearTimeout(mobileUiTimeout);
+    }
+
+    window.addEventListener('sp-mobile-ui-interaction-start', cancelMobileUITimeout);
+    window.addEventListener('sp-mobile-ui-interaction-end', triggerMobileUITimeout);
 
     function handleScreenClick(point: { x: number, y: number }, defaultCenterAction: 'zoom' | 'toggle') {
       const width = window.innerWidth;
@@ -175,8 +187,8 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
          if (defaultCenterAction === 'zoom' && pswp?.currSlide?.isZoomable() && pswp.currSlide.zoomLevels.secondary !== pswp.currSlide.zoomLevels.initial) {
             pswp.currSlide.toggleZoom(point);
          } else {
-            pswp?.element?.classList.toggle('pswp--ui-visible');
-            triggerMobileUITimeout();
+            const isNowVisible = pswp?.element?.classList.toggle('pswp--ui-visible');
+            if (isNowVisible) triggerMobileUITimeout();
          }
       }
     }
@@ -215,6 +227,11 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
       bgClickAction: (point: any) => handleScreenClick(point, 'toggle'),
       imageClickAction: (point: any) => handleScreenClick(point, 'zoom'),
       tapAction: (point: any) => handleScreenClick(point, 'toggle'),
+    });
+
+    pswp.on('destroy', () => {
+      window.removeEventListener('sp-mobile-ui-interaction-start', cancelMobileUITimeout);
+      window.removeEventListener('sp-mobile-ui-interaction-end', triggerMobileUITimeout);
     });
 
     const fetchingState = new Map<string, 'resolving' | 'downloading'>();
@@ -491,10 +508,10 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
         // Append HUD
         pswp.element.appendChild(hud.getElement());
 
-        // Toggle visibility with PhotoSwipe UI
         const observer = new MutationObserver(() => {
           if (pswp && pswp.element) {
             const isVisible = pswp.element.classList.contains('pswp--ui-visible');
+            
             sidebar.getElements().forEach(el => { 
                if (isVisible) {
                  el.classList.remove('sp-hidden-by-pswp');
@@ -502,9 +519,19 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
                  el.classList.add('sp-hidden-by-pswp');
                }
             });
+            
+            const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+            if (isTouchDevice) {
+              if (isVisible) {
+                 sidebar.openPanel(false); 
+              } else {
+                 sidebar.closePanel();
+              }
+            }
           }
         });
         observer.observe(pswp.element, { attributes: true, attributeFilter: ['class'] });
+        pswp.on('destroy', () => observer.disconnect());
 
         // Trigger initial timeout for mobile UI
         triggerMobileUITimeout();
@@ -522,6 +549,10 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
     autoPlay.stop();
     store.autoPlay = false;
     isActive = false;
+
+    document.documentElement.style.overflow = '';
+    document.body.style.overflow = '';
+
     store.emit('readerModeChanged');
 
     if (pswp) {
