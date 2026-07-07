@@ -26,7 +26,6 @@ export function createThumbnailPanel(
   thumbPanel.appendChild(viewport);
   thumbPanel.appendChild(counter);
 
-  let scrollOffset = 0;
   let lastCenteredIndex = -1;
   let clickedFromPanel = false;
   const itemPool: HTMLElement[] = [];
@@ -92,9 +91,7 @@ export function createThumbnailPanel(
     return window.innerWidth <= 768 ? 140 : 72;
   }
 
-  function clamp(val: number, min: number, max: number): number {
-    return Math.max(min, Math.min(max, val));
-  }
+
 
   function vpSize(): number {
     if (isVertical()) {
@@ -211,6 +208,18 @@ export function createThumbnailPanel(
     }, 200);
   }
 
+  function getScrollOffset(): number {
+    return isVertical() ? viewport.scrollTop : viewport.scrollLeft;
+  }
+
+  function setScrollOffset(val: number): void {
+    if (isVertical()) {
+      viewport.scrollTop = val;
+    } else {
+      viewport.scrollLeft = val;
+    }
+  }
+
   function renderVisibleItems(): void {
     const total = store.allImages.length;
     if (total === 0) return;
@@ -226,8 +235,7 @@ export function createThumbnailPanel(
       content.style.height = '100%';
     }
 
-    scrollOffset = clamp(scrollOffset, 0, maxOffset());
-
+    const scrollOffset = getScrollOffset();
     const startIdx = Math.max(0, Math.floor(scrollOffset / itemSize) - BUFFER);
     const endIdx = Math.min(total - 1, Math.ceil((scrollOffset + vp) / itemSize) + BUFFER);
 
@@ -253,12 +261,6 @@ export function createThumbnailPanel(
       renderItemContent(el, i);
     }
 
-    if (isVertical()) {
-      content.style.transform = `translateY(${-scrollOffset}px)`;
-    } else {
-      content.style.transform = `translateX(${-scrollOffset}px)`;
-    }
-    
     triggerLazyLoadForVisible();
   }
 
@@ -266,7 +268,7 @@ export function createThumbnailPanel(
     const vp = vpSize();
     const itemSize = getItemSize();
     const target = store.currentImageIndex * itemSize - vp / 2 + itemSize / 2;
-    scrollOffset = clamp(target, 0, maxOffset());
+    setScrollOffset(target);
   }
 
   function ensureVisible(): void {
@@ -274,12 +276,12 @@ export function createThumbnailPanel(
     const itemSize = getItemSize();
     const itemStart = store.currentImageIndex * itemSize;
     const itemEnd = itemStart + itemSize;
-    if (itemStart < scrollOffset) {
-      scrollOffset = itemStart;
-    } else if (itemEnd > scrollOffset + vp) {
-      scrollOffset = itemEnd - vp;
+    const currentScroll = getScrollOffset();
+    if (itemStart < currentScroll) {
+      setScrollOffset(itemStart);
+    } else if (itemEnd > currentScroll + vp) {
+      setScrollOffset(itemEnd - vp);
     }
-    scrollOffset = clamp(scrollOffset, 0, maxOffset());
   }
 
   function update(): void {
@@ -300,64 +302,226 @@ export function createThumbnailPanel(
     counter.textContent = displayLabel;
   }
 
-  viewport.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    scrollOffset = clamp(scrollOffset + e.deltaY + e.deltaX, 0, maxOffset());
+  let lastScrollPos = 0;
+  viewport.addEventListener('scroll', () => {
     renderVisibleItems();
-    if (onScrollToBottom && scrollOffset >= maxOffset() - getItemSize()) {
+    const currentScroll = getScrollOffset();
+    const isScrollingUp = currentScroll < lastScrollPos;
+    const isScrollingDown = currentScroll > lastScrollPos;
+    
+    if (onScrollToTop && currentScroll <= 5 && isScrollingUp) {
+      onScrollToTop();
+    } else if (onScrollToBottom && currentScroll >= maxOffset() - 5 && isScrollingDown) {
       onScrollToBottom();
     }
-    if (onScrollToTop && scrollOffset <= getItemSize()) {
-      onScrollToTop();
-    }
+    
+    lastScrollPos = currentScroll;
+    
     openPanel(true);
     clearTimeout(hideTimeout);
     hideTimeout = setTimeout(() => openPanel(false), 500);
+  }, { passive: true });
+
+  thumbPanel.addEventListener('wheel', (e) => {
+    e.stopPropagation(); // Stop PhotoSwipe from changing slides
+  }, { passive: true });
+
+  viewport.addEventListener('wheel', (e) => {
+    // Check if primarily vertical wheel
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      const prevScroll = getScrollOffset();
+      
+      // If horizontal panel, we map vertical wheel to horizontal scroll manually
+      if (!isVertical()) {
+        e.preventDefault();
+        viewport.scrollBy({ left: e.deltaY, behavior: 'auto' });
+      }
+      
+      // Edge loading detection for both vertical and horizontal panels
+      const mOffset = maxOffset();
+      if (prevScroll <= 0 && e.deltaY < 0 && onScrollToTop) {
+        onScrollToTop();
+      } else if (prevScroll >= mOffset - 1 && e.deltaY > 0 && onScrollToBottom) {
+        onScrollToBottom();
+      }
+    }
   }, { passive: false });
 
-  // Touch scrolling support
-  let touchStartPos = 0;
-  let touchStartScroll = 0;
+  // Polyfill drag-to-scroll for desktop mouse with inertia
+  let isDragging = false;
+  let hasDragged = false;
+  let startX = 0;
+  let startY = 0;
+  let startScroll = 0;
+  
+  let lastTime = 0;
+  let lastClientX = 0;
+  let lastClientY = 0;
+  let velocityX = 0;
+  let velocityY = 0;
+  let inertiaRaf = 0;
+
+  viewport.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'mouse' || e.button !== 0) return;
+    cancelAnimationFrame(inertiaRaf);
+    isDragging = true;
+    hasDragged = false;
+    startX = e.clientX;
+    startY = e.clientY;
+    startScroll = isVertical() ? viewport.scrollTop : viewport.scrollLeft;
+    
+    lastClientX = e.clientX;
+    lastClientY = e.clientY;
+    lastTime = performance.now();
+    velocityX = 0;
+    velocityY = 0;
+    
+    viewport.style.cursor = 'grabbing';
+  });
+
+  window.addEventListener('pointermove', (e) => {
+    if (!isDragging) return;
+    if (Math.abs(e.clientX - startX) > 5 || Math.abs(e.clientY - startY) > 5) {
+      hasDragged = true;
+    }
+    e.preventDefault();
+    
+    const now = performance.now();
+    const dt = now - lastTime;
+    if (dt > 5) {
+      const dx = e.clientX - lastClientX;
+      const dy = e.clientY - lastClientY;
+      velocityX = 0.6 * velocityX + 0.4 * (-dx / dt);
+      velocityY = 0.6 * velocityY + 0.4 * (-dy / dt);
+      lastClientX = e.clientX;
+      lastClientY = e.clientY;
+      lastTime = now;
+    }
+    
+    const mOffset = maxOffset();
+    
+    if (isVertical()) {
+      const newScroll = startScroll - (e.clientY - startY);
+      viewport.scrollTop = newScroll;
+      
+      if (startScroll <= 0 && newScroll < -30 && onScrollToTop) {
+        onScrollToTop();
+        startScroll = 0;
+        startY = e.clientY;
+      } else if (startScroll >= mOffset - 1 && newScroll > mOffset + 30 && onScrollToBottom) {
+        onScrollToBottom();
+        startScroll = mOffset;
+        startY = e.clientY;
+      }
+    } else {
+      const newScroll = startScroll - (e.clientX - startX);
+      viewport.scrollLeft = newScroll;
+
+      if (startScroll <= 0 && newScroll < -30 && onScrollToTop) {
+        onScrollToTop();
+        startScroll = 0;
+        startX = e.clientX;
+      } else if (startScroll >= mOffset - 1 && newScroll > mOffset + 30 && onScrollToBottom) {
+        onScrollToBottom();
+        startScroll = mOffset;
+        startX = e.clientX;
+      }
+    }
+  });
+
+  window.addEventListener('pointerup', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    viewport.style.cursor = '';
+    
+    const timeSinceLastMove = performance.now() - lastTime;
+    if (timeSinceLastMove > 50) {
+       velocityX = 0;
+       velocityY = 0;
+    }
+    
+    let virtualScroll = isVertical() ? viewport.scrollTop : viewport.scrollLeft;
+    
+    const startInertia = () => {
+      const v = isVertical() ? velocityY : velocityX;
+      if (Math.abs(v) < 0.05) return;
+      
+      const mOffset = maxOffset();
+      virtualScroll += v * 16;
+      
+      if (isVertical()) {
+        viewport.scrollTop = virtualScroll;
+        if (virtualScroll < -30 && onScrollToTop) {
+           onScrollToTop();
+           return;
+        }
+        if (virtualScroll > mOffset + 30 && onScrollToBottom) {
+           onScrollToBottom();
+           return;
+        }
+        velocityY *= 0.95; 
+        if (virtualScroll < 0 || virtualScroll > mOffset) velocityY *= 0.8;
+      } else {
+        viewport.scrollLeft = virtualScroll;
+        if (virtualScroll < -30 && onScrollToTop) {
+           onScrollToTop();
+           return;
+        }
+        if (virtualScroll > mOffset + 30 && onScrollToBottom) {
+           onScrollToBottom();
+           return;
+        }
+        velocityX *= 0.95;
+        if (virtualScroll < 0 || virtualScroll > mOffset) velocityX *= 0.8;
+      }
+
+      inertiaRaf = requestAnimationFrame(startInertia);
+    };
+    
+    inertiaRaf = requestAnimationFrame(startInertia);
+  });
+
+  // Polyfill edge-pull loading for mobile touch
+  // Since native scroll doesn't fire events when trying to scroll past the boundaries on some mobile browsers
+  let touchStartX = 0;
+  let touchStartY = 0;
 
   viewport.addEventListener('touchstart', (e) => {
-    e.stopPropagation();
-    if (store.allImages.length === 0) return;
-    touchStartPos = isVertical() ? e.touches[0].clientY : e.touches[0].clientX;
-    touchStartScroll = scrollOffset;
-    openPanel(true); // Keep open while dragging
-  }, { passive: false });
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
 
   viewport.addEventListener('touchmove', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (store.allImages.length === 0) return;
-    const currentPos = isVertical() ? e.touches[0].clientY : e.touches[0].clientX;
-    const diff = touchStartPos - currentPos; // Swiping up means scroll down (positive diff)
-    scrollOffset = clamp(touchStartScroll + diff, 0, maxOffset());
-    renderVisibleItems();
-    openPanel(true); // Keep open while dragging
+    const currentScroll = getScrollOffset();
+    const mOffset = maxOffset();
     
-    // Check edge triggers
-    if (onScrollToBottom && scrollOffset >= maxOffset() - getItemSize()) {
-      onScrollToBottom();
+    if (isVertical()) {
+      const dy = e.touches[0].clientY - touchStartY;
+      if (currentScroll <= 0 && dy > 40 && onScrollToTop) {
+        onScrollToTop();
+        touchStartY = e.touches[0].clientY; // Reset to avoid rapid fire
+      } else if (currentScroll >= mOffset - 1 && dy < -40 && onScrollToBottom) {
+        onScrollToBottom();
+        touchStartY = e.touches[0].clientY;
+      }
+    } else {
+      const dx = e.touches[0].clientX - touchStartX;
+      if (currentScroll <= 0 && dx > 40 && onScrollToTop) {
+        onScrollToTop();
+        touchStartX = e.touches[0].clientX;
+      } else if (currentScroll >= mOffset - 1 && dx < -40 && onScrollToBottom) {
+        onScrollToBottom();
+        touchStartX = e.touches[0].clientX;
+      }
     }
-    if (onScrollToTop && scrollOffset <= getItemSize()) {
-      onScrollToTop();
-    }
-  }, { passive: false });
-
-  viewport.addEventListener('touchend', (e) => {
-    e.stopPropagation();
-    openPanel(false); // Restart timeout
-  });
-
-  viewport.addEventListener('touchcancel', (e) => {
-    e.stopPropagation();
-    openPanel(false); // Restart timeout
-  });
+  }, { passive: true });
 
   content.addEventListener('click', (e) => {
+    if (hasDragged) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     const item = (e.target as HTMLElement).closest('.sp-thumb-item') as HTMLElement | null;
     if (item?.dataset.index) {
       const index = parseInt(item.dataset.index);

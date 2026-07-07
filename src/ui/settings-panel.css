@@ -240,12 +240,12 @@
   display: flex;
   background: rgba(255, 255, 255, 0.08);
   border-radius: 8px;
-  padding: 3px;
-  gap: 2px;
+  padding: 4px;
+  gap: 4px;
 }
 
 .segment-item {
-  padding: 4px 10px;
+  padding: 6px 8px;
   border-radius: 6px;
   font-size: 13px;
   color: rgba(255, 255, 255, 0.6);
@@ -253,6 +253,7 @@
   transition: all 0.2s ease;
   user-select: none;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .segment-item:hover {
@@ -333,18 +334,19 @@
   }
 
   .segment-control {
-    width: 100%;
-    padding: 8px;
-    gap: 8px;
-    border-radius: 16px;
+    padding: 6px;
+    gap: 6px;
+    border-radius: 14px;
     display: flex;
+    flex: 1;
+    min-width: 200px;
   }
 
   .segment-item {
     flex: 1;
-    padding: 18px 0;
-    font-size: 20px;
-    border-radius: 12px;
+    padding: 14px 6px;
+    font-size: 18px;
+    border-radius: 10px;
     font-weight: 600;
     text-align: center;
     display: flex;

@@ -235,7 +235,14 @@
   min-height: 0;
   position: relative;
   border-radius: inherit;
-  overflow: hidden;
+  overflow: auto;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.sp-thumb-viewport::-webkit-scrollbar {
+  display: none;
 }
 
 .sp-thumb-content {
