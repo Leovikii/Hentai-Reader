@@ -365,7 +365,7 @@
 }
 
 
-@media (max-width: 768px) {
+@media (max-width: 767px) {
   .sp-thumb-panel.position-bottom {
     bottom: 16px;
     max-width: 80%;

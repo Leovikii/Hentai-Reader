@@ -267,7 +267,7 @@
 
 
 
-@media (max-width: 768px) {
+@media (max-width: 767px) {
   /* Settings Panel Sizing */
   .settings-sheet-header {
     height: 64px;
