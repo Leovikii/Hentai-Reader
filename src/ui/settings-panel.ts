@@ -135,7 +135,7 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
   intervalRight.appendChild(minusBtn);
   intervalRight.appendChild(intervalInput);
   intervalRight.appendChild(plusBtn);
-  
+
   intervalItem.appendChild(intervalLabel);
   intervalItem.appendChild(intervalRight);
   bottomSheet.appendChild(intervalItem);
@@ -164,16 +164,16 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
     const item = document.createElement('div');
     item.className = `segment-item${store.settings.thumbnailPosition === opt.value ? ' active' : ''}`;
     item.textContent = opt.label;
-    
+
     item.onclick = (e) => {
       e.stopPropagation();
       if (store.settings.thumbnailPosition === opt.value) return;
-      
+
       store.updateSetting('thumbnailPosition', opt.value as any);
       segmentItems.forEach(el => el.classList.remove('active'));
       item.classList.add('active');
     };
-    
+
     segmentItems.push(item);
     segmentControl.appendChild(item);
   });
@@ -186,20 +186,20 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
 
   const show = () => {
     backdrop.classList.add('show');
-    if (window.innerWidth > 768) {
+    if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
       requestAnimationFrame(() => {
         const rect = anchorElement.getBoundingClientRect();
         const panelRect = bottomSheet.getBoundingClientRect();
-        
+
         let top = rect.top + rect.height / 2 - panelRect.height / 2;
         top = Math.max(16, Math.min(window.innerHeight - panelRect.height - 16, top));
-        
+
         bottomSheet.style.top = `${top}px`;
         bottomSheet.style.bottom = 'auto';
-        
+
         // Hardcode width for desktop to prevent CSS transition measurement issues
         const panelWidth = 340;
-        
+
         if (rect.left < window.innerWidth / 2) {
           bottomSheet.style.left = `${rect.right + 20}px`;
           bottomSheet.style.transformOrigin = 'left center';
