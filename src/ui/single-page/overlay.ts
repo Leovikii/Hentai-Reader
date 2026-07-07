@@ -181,9 +181,17 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
     function handleScreenClick(point: { x: number, y: number }, defaultCenterAction: 'zoom' | 'toggle') {
       const width = window.innerWidth;
       if (point.x < width * 0.3) {
-         pswp?.prev();
+         if (pswp?.currIndex === 0 && store.prevUrl && !store.isFetching) {
+            loadPrevPage();
+         } else {
+            pswp?.prev();
+         }
       } else if (point.x > width * 0.7) {
-         pswp?.next();
+         if (pswp?.currIndex === store.allImages.length - 1 && store.nextUrl && !store.isFetching) {
+            loadNextPage();
+         } else {
+            pswp?.next();
+         }
       } else {
          if (defaultCenterAction === 'zoom' && pswp?.currSlide?.isZoomable() && pswp.currSlide.zoomLevels.secondary !== pswp.currSlide.zoomLevels.initial) {
             pswp.currSlide.toggleZoom(point);
@@ -199,6 +207,7 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
       counter: false, // We use a custom counter to show global offset
       bgOpacity: 1,
       spacing: 0.1,
+      loop: false,
       wheelToZoom: false,
       preload: [1, 1], // Reduced from [1, 3] to save memory for massive WebPs
       closeOnVerticalDrag: true,
@@ -401,17 +410,24 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
              const pagesToJump = Math.trunc(scrollAccumulator / SCROLL_THRESHOLD);
              if (pagesToJump !== 0) {
                  let targetIndex = pswp!.currIndex + pagesToJump;
-                 targetIndex = Math.max(0, Math.min(store.allImages.length - 1, targetIndex));
                  
-                 if (targetIndex !== pswp!.currIndex) {
-                     // @ts-ignore
-                     if (pswp!.mainScroll && pswp!.mainScroll.stop) pswp!.mainScroll.stop();
-                     pswp!.goTo(targetIndex);
-                 }
-                 // Keep remainder for smooth trackpads, but cap it
-                 scrollAccumulator -= pagesToJump * SCROLL_THRESHOLD;
-                 if (Math.abs(scrollAccumulator) > SCROLL_THRESHOLD) {
-                     scrollAccumulator = Math.sign(scrollAccumulator) * (SCROLL_THRESHOLD - 1);
+                 if (targetIndex < 0 && store.prevUrl && !store.isFetching) {
+                     loadPrevPage();
+                     scrollAccumulator = 0;
+                 } else if (targetIndex >= store.allImages.length && store.nextUrl && !store.isFetching) {
+                     loadNextPage();
+                     scrollAccumulator = 0;
+                 } else {
+                     targetIndex = Math.max(0, Math.min(store.allImages.length - 1, targetIndex));
+                     if (targetIndex !== pswp!.currIndex) {
+                         // @ts-ignore
+                         if (pswp!.mainScroll && pswp!.mainScroll.stop) pswp!.mainScroll.stop();
+                         pswp!.goTo(targetIndex);
+                     }
+                     scrollAccumulator -= pagesToJump * SCROLL_THRESHOLD;
+                     if (Math.abs(scrollAccumulator) > SCROLL_THRESHOLD) {
+                         scrollAccumulator = Math.sign(scrollAccumulator) * (SCROLL_THRESHOLD - 1);
+                     }
                  }
              }
              scrollBatchTimeout = null;
@@ -462,6 +478,9 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
       }
     });
 
+    let touchStartX = 0;
+    let touchStartY = 0;
+
     pswp.on('uiRegister', () => {
       if (pswp && pswp.ui) {
         // Register Custom Counter
@@ -486,6 +505,39 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
         
         // Append HUD
         pswp.element.appendChild(hud.getElement());
+
+        // Mobile out-of-bounds swipe detection
+        pswp.element.addEventListener('touchstart', (e: TouchEvent) => {
+            if (e.touches.length === 1) {
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+            }
+        }, { passive: true });
+
+        pswp.element.addEventListener('touchend', (e: TouchEvent) => {
+            if (e.changedTouches.length === 1) {
+                const touchEndX = e.changedTouches[0].clientX;
+                const touchEndY = e.changedTouches[0].clientY;
+                const deltaX = touchEndX - touchStartX;
+                const deltaY = touchEndY - touchStartY;
+
+                // Check if it's a horizontal swipe
+                if (Math.abs(deltaX) > 50 && Math.abs(deltaY) < Math.abs(deltaX)) {
+                    const slide = pswp?.currSlide;
+                    if (slide && slide.currZoomLevel <= slide.zoomLevels.initial) {
+                        if (deltaX > 0) { // Swiped right
+                            if (pswp?.currIndex === 0 && store.prevUrl && !store.isFetching) {
+                                loadPrevPage();
+                            }
+                        } else { // Swiped left
+                            if (pswp?.currIndex === store.allImages.length - 1 && store.nextUrl && !store.isFetching) {
+                                loadNextPage();
+                            }
+                        }
+                    }
+                }
+            }
+        }, { passive: true });
 
         const observer = new MutationObserver(() => {
           if (pswp && pswp.element) {

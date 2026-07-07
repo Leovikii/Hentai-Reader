@@ -29,8 +29,14 @@
   opacity: 0.4;
 }
 
-.bookmark-control:not(.dragging):hover {
+.bookmark-control:not(.dragging):active {
   opacity: 1;
+}
+
+@media (hover: hover) {
+  .bookmark-control:not(.dragging):hover {
+    opacity: 1;
+  }
 }
 
 .bookmark-control.left-side {
