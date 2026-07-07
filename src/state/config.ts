@@ -21,5 +21,6 @@ export function loadSettings(adapterName?: string): UserSettings {
     showControl: GM_getValue('showControl', true),
     autoEnterSinglePage: GM_getValue('autoEnterSinglePage', false),
     autoPlayInterval: GM_getValue('autoPlayInterval', 3000),
+    thumbnailPosition: GM_getValue('thumbnailPosition', 'bottom'),
   };
 }

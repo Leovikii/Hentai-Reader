@@ -14,7 +14,6 @@ interface SettingItem {
 
 const SETTINGS: SettingItem[] = [
   { label: i18n.scrollMode, key: 'scrollMode' },
-  { label: i18n.showControl, key: 'showControl' },
   { label: i18n.autoEnter, key: 'autoEnterSinglePage' },
 ];
 
@@ -101,6 +100,48 @@ export function createSettingsPanel(): SettingsPanelHandle {
   intervalItem.appendChild(intervalLabel);
   intervalItem.appendChild(intervalRight);
   bottomSheet.appendChild(intervalItem);
+
+  // Thumbnail Position setting (Apple-style Segmented Control)
+  const posItem = document.createElement('div');
+  posItem.className = 'settings-item';
+
+  const posLabel = document.createElement('span');
+  posLabel.className = 'settings-label';
+  posLabel.textContent = i18n.thumbnailPosition;
+
+  const segmentControl = document.createElement('div');
+  segmentControl.className = 'segment-control';
+
+  const posOptions = [
+    { value: 'top', label: i18n.posTop },
+    { value: 'bottom', label: i18n.posBottom },
+    { value: 'left', label: i18n.posLeft },
+    { value: 'right', label: i18n.posRight },
+  ];
+
+  const segmentItems: HTMLElement[] = [];
+
+  posOptions.forEach(opt => {
+    const item = document.createElement('div');
+    item.className = `segment-item${store.settings.thumbnailPosition === opt.value ? ' active' : ''}`;
+    item.textContent = opt.label;
+    
+    item.onclick = (e) => {
+      e.stopPropagation();
+      if (store.settings.thumbnailPosition === opt.value) return;
+      
+      store.updateSetting('thumbnailPosition', opt.value as any);
+      segmentItems.forEach(el => el.classList.remove('active'));
+      item.classList.add('active');
+    };
+    
+    segmentItems.push(item);
+    segmentControl.appendChild(item);
+  });
+
+  posItem.appendChild(posLabel);
+  posItem.appendChild(segmentControl);
+  bottomSheet.appendChild(posItem);
 
   backdrop.appendChild(bottomSheet);
 

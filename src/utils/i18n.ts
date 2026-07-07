@@ -10,9 +10,13 @@ export const i18n = {
   // Settings Panel
   scrollMode: isZH ? '卷轴模式' : 'Scroll Mode',
   autoEnter: isZH ? '自动进入阅读器' : 'Auto Enter Reader',
-  showControl: isZH ? '显示悬浮控件' : 'Show Float Control',
   readerWidth: isZH ? '阅读器最大宽度' : 'Reader Max Width',
   playSpeed: isZH ? '自动翻页速度' : 'Auto Play Speed',
+  thumbnailPosition: isZH ? '缩略图位置' : 'Thumbnail Position',
+  posBottom: isZH ? '底部' : 'Bottom',
+  posTop: isZH ? '顶部' : 'Top',
+  posLeft: isZH ? '左侧' : 'Left',
+  posRight: isZH ? '右侧' : 'Right',
   maxPreload: isZH ? '最大预加载数量' : 'Max Preload Count',
   close: isZH ? '关闭' : 'Close',
 

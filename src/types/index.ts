@@ -3,6 +3,7 @@ export interface UserSettings {
   showControl: boolean;
   autoEnterSinglePage: boolean;
   autoPlayInterval: number;
+  thumbnailPosition: 'top' | 'bottom' | 'left' | 'right';
 }
 
 export interface AppConfig {

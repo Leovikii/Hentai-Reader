@@ -5,7 +5,7 @@ import { store } from '../../state/store';
 import type { PageLink } from '../../types/site-adapter';
 import { qa } from '../../utils/dom';
 import { prefetchImageUrl } from '../../features/scroll-mode';
-import { createSidebar } from './sidebar';
+import { createSidebar } from './thumbnail-panel';
 import { createAutoPlay } from './auto-play';
 import { createStatusHUD } from '../components/status-hud';
 import { i18n } from '../../utils/i18n';

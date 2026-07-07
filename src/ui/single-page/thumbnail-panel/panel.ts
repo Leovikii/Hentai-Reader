@@ -1,35 +1,15 @@
-import { store } from '../../state/store';
-import { loadPlaceholderImage } from '../../features/scroll-mode';
+import { store } from '../../../state/store';
+import { loadPlaceholderImage } from '../../../features/scroll-mode';
 
-export interface SidebarHandle {
-  update: () => void;
-  getElements: () => HTMLElement[];
-  wakeUpProgressBar: () => void;
-}
-
-const ITEM_WIDTH = 72;
+const ITEM_SIZE = 72;
 const VISIBLE_COUNT = 15;
 const BUFFER = 3;
 
-export function createSidebar(
+export function createThumbnailPanel(
   onIndexChange: (index: number) => void,
   onScrollToBottom?: () => void,
-  onScrollToTop?: () => void,
-): SidebarHandle {
-  // --- PROGRESS BAR SECTION ---
-  const progressTrack = document.createElement('div');
-  progressTrack.className = 'sp-sidebar-track';
-
-  const progressThumb = document.createElement('div');
-  progressThumb.className = 'sp-sidebar-thumb';
-
-  const progressLabel = document.createElement('div');
-  progressLabel.className = 'sp-sidebar-label';
-
-  progressTrack.appendChild(progressThumb);
-  progressTrack.appendChild(progressLabel);
-
-  // --- THUMBNAIL SECTION ---
+  onScrollToTop?: () => void
+) {
   const thumbPanel = document.createElement('div');
   thumbPanel.className = 'sp-thumb-panel';
 
@@ -46,26 +26,13 @@ export function createSidebar(
   thumbPanel.appendChild(viewport);
   thumbPanel.appendChild(counter);
 
-  // --- STATE ---
   let scrollOffset = 0;
   let lastCenteredIndex = -1;
   let clickedFromPanel = false;
   const itemPool: HTMLElement[] = [];
   const activeItems = new Map<number, HTMLElement>();
-  let cachedTrackWidth = 0;
 
-  // --- MOUSE & SCROLL TRACKING ---
-  let progressWakeTimer: ReturnType<typeof setTimeout> | null = null;
   let isPanelActive = false;
-
-  function wakeUpProgressBar() {
-    if (isPanelActive) return;
-    progressTrack.classList.add('active');
-    if (progressWakeTimer) clearTimeout(progressWakeTimer);
-    progressWakeTimer = setTimeout(() => {
-      progressTrack.classList.remove('active');
-    }, 1500);
-  }
 
   function closePanel() {
     if (!isPanelActive) return;
@@ -77,40 +44,7 @@ export function createSidebar(
     if (isPanelActive) return;
     isPanelActive = true;
     thumbPanel.classList.add('active');
-    progressTrack.classList.remove('active');
-    if (progressWakeTimer) clearTimeout(progressWakeTimer);
   }
-
-  document.addEventListener('mousemove', (e) => {
-    if (!document.querySelector('.pswp')) return;
-    if (isDragging) return;
-
-    // Failsafe: if mouse moves completely out of the viewport (top, bottom, left)
-    if (e.clientX < 0 || e.clientY < 0 || e.clientY >= window.innerHeight - 1) {
-      closePanel();
-      return;
-    }
-
-    const dy = window.innerHeight - e.clientY;
-    
-    if (dy <= 140) {
-      openPanel();
-    } else {
-      closePanel();
-    }
-  });
-
-  // e.relatedTarget is null when the mouse leaves the browser window entirely
-  document.addEventListener('mouseout', (e) => {
-    if (!e.relatedTarget) closePanel();
-  });
-
-  document.documentElement.addEventListener('mouseleave', closePanel);
-
-  function refreshTrackWidth(): void {
-    cachedTrackWidth = progressTrack.offsetWidth;
-  }
-  window.addEventListener('resize', refreshTrackWidth, { passive: true });
 
   document.addEventListener('sp-image-loaded', (e: Event) => {
     const detail = (e as CustomEvent).detail;
@@ -122,19 +56,29 @@ export function createSidebar(
     }
   });
 
-  // --- THUMBNAIL LOGIC ---
+  function isVertical() {
+    const pos = store.settings.thumbnailPosition;
+    return pos === 'left' || pos === 'right';
+  }
+
+  function getItemSize() {
+    return ITEM_SIZE;
+  }
+
   function clamp(val: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, val));
   }
 
-  function vpWidth(): number {
-    // Return the actual pixel width rendered by CSS flexbox, 
-    // or fallback to a calculated width if not yet attached to DOM
-    return viewport.offsetWidth || Math.min(VISIBLE_COUNT * ITEM_WIDTH, store.allImages.length * ITEM_WIDTH);
+  function vpSize(): number {
+    if (isVertical()) {
+      return viewport.offsetHeight || Math.min(VISIBLE_COUNT * ITEM_SIZE, store.allImages.length * ITEM_SIZE);
+    } else {
+      return viewport.offsetWidth || Math.min(VISIBLE_COUNT * ITEM_SIZE, store.allImages.length * ITEM_SIZE);
+    }
   }
 
   function maxOffset(): number {
-    return Math.max(0, store.allImages.length * ITEM_WIDTH - vpWidth());
+    return Math.max(0, store.allImages.length * getItemSize() - vpSize());
   }
 
   function acquireItem(): HTMLElement {
@@ -244,13 +188,21 @@ export function createSidebar(
     const total = store.allImages.length;
     if (total === 0) return;
 
-    const vp = vpWidth();
-    content.style.width = `${total * ITEM_WIDTH}px`;
+    const vp = vpSize();
+    const itemSize = getItemSize();
+    
+    if (isVertical()) {
+      content.style.width = '100%';
+      content.style.height = `${total * itemSize}px`;
+    } else {
+      content.style.width = `${total * itemSize}px`;
+      content.style.height = '100%';
+    }
 
     scrollOffset = clamp(scrollOffset, 0, maxOffset());
 
-    const startIdx = Math.max(0, Math.floor(scrollOffset / ITEM_WIDTH) - BUFFER);
-    const endIdx = Math.min(total - 1, Math.ceil((scrollOffset + vp) / ITEM_WIDTH) + BUFFER);
+    const startIdx = Math.max(0, Math.floor(scrollOffset / itemSize) - BUFFER);
+    const endIdx = Math.min(total - 1, Math.ceil((scrollOffset + vp) / itemSize) + BUFFER);
 
     for (const [idx, el] of activeItems) {
       if (idx < startIdx || idx > endIdx) {
@@ -266,29 +218,39 @@ export function createSidebar(
         activeItems.set(i, el);
         content.appendChild(el);
       }
-      el.style.transform = `translateX(${i * ITEM_WIDTH}px)`;
+      if (isVertical()) {
+        el.style.transform = `translateY(${i * itemSize}px)`;
+      } else {
+        el.style.transform = `translateX(${i * itemSize}px)`;
+      }
       renderItemContent(el, i);
     }
 
-    content.style.transform = `translateX(${-scrollOffset}px)`;
+    if (isVertical()) {
+      content.style.transform = `translateY(${-scrollOffset}px)`;
+    } else {
+      content.style.transform = `translateX(${-scrollOffset}px)`;
+    }
     
     triggerLazyLoadForVisible();
   }
 
   function centerOnCurrent(): void {
-    const vp = vpWidth();
-    const target = store.currentImageIndex * ITEM_WIDTH - vp / 2 + ITEM_WIDTH / 2;
+    const vp = vpSize();
+    const itemSize = getItemSize();
+    const target = store.currentImageIndex * itemSize - vp / 2 + itemSize / 2;
     scrollOffset = clamp(target, 0, maxOffset());
   }
 
   function ensureVisible(): void {
-    const vp = vpWidth();
-    const itemLeft = store.currentImageIndex * ITEM_WIDTH;
-    const itemRight = itemLeft + ITEM_WIDTH;
-    if (itemLeft < scrollOffset) {
-      scrollOffset = itemLeft;
-    } else if (itemRight > scrollOffset + vp) {
-      scrollOffset = itemRight - vp;
+    const vp = vpSize();
+    const itemSize = getItemSize();
+    const itemStart = store.currentImageIndex * itemSize;
+    const itemEnd = itemStart + itemSize;
+    if (itemStart < scrollOffset) {
+      scrollOffset = itemStart;
+    } else if (itemEnd > scrollOffset + vp) {
+      scrollOffset = itemEnd - vp;
     }
     scrollOffset = clamp(scrollOffset, 0, maxOffset());
   }
@@ -296,7 +258,6 @@ export function createSidebar(
   function update(): void {
     if (store.allImages.length === 0) return;
 
-    // Thumbnail updates
     if (store.currentImageIndex !== lastCenteredIndex) {
       if (clickedFromPanel) {
         ensureVisible();
@@ -310,44 +271,21 @@ export function createSidebar(
     
     const displayLabel = `${store.imageOffset + store.currentImageIndex + 1} / ${store.imageOffset + store.allImages.length}`;
     counter.textContent = displayLabel;
-
-    // Progress bar updates
-    if (!cachedTrackWidth) refreshTrackWidth();
-    const trackWidth = cachedTrackWidth;
-    let thumbWidth: number;
-
-    if (store.allImages.length <= 10) {
-      thumbWidth = 60;
-    } else if (store.allImages.length <= 50) {
-      thumbWidth = Math.max(60, trackWidth * (10 / store.allImages.length));
-    } else {
-      thumbWidth = Math.max(60, trackWidth * (5 / store.allImages.length));
-    }
-
-    const scrollProgress = store.currentImageIndex / Math.max(1, store.allImages.length - 1);
-    const maxThumbLeft = trackWidth - thumbWidth;
-    const thumbLeft = scrollProgress * maxThumbLeft;
-
-    progressThumb.style.width = `${thumbWidth}px`;
-    progressThumb.style.left = `${thumbLeft}px`;
-    progressLabel.textContent = displayLabel;
   }
 
-  // Wheel event for thumbnails
   viewport.addEventListener('wheel', (e) => {
     e.preventDefault();
     e.stopPropagation();
     scrollOffset = clamp(scrollOffset + e.deltaY + e.deltaX, 0, maxOffset());
     renderVisibleItems();
-    if (onScrollToBottom && scrollOffset >= maxOffset() - ITEM_WIDTH) {
+    if (onScrollToBottom && scrollOffset >= maxOffset() - getItemSize()) {
       onScrollToBottom();
     }
-    if (onScrollToTop && scrollOffset <= ITEM_WIDTH) {
+    if (onScrollToTop && scrollOffset <= getItemSize()) {
       onScrollToTop();
     }
   }, { passive: false });
 
-  // Click on thumbnail item
   content.addEventListener('click', (e) => {
     const item = (e.target as HTMLElement).closest('.sp-thumb-item') as HTMLElement | null;
     if (item?.dataset.index) {
@@ -359,56 +297,22 @@ export function createSidebar(
     }
   });
 
-  // --- SCROLLBAR EVENTS ---
-  // Click track to seek
-  progressTrack.onclick = (e) => {
-    if (e.target === progressThumb) return;
-    const rect = progressTrack.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const scrollProgress = Math.min(1, Math.max(0, clickX / rect.width));
-    const targetIndex = Math.round(scrollProgress * (store.allImages.length - 1));
-    if (targetIndex >= 0 && targetIndex < store.allImages.length) {
-      onIndexChange(targetIndex);
+  window.addEventListener('resize', () => {
+    if (store.allImages.length > 0) {
+      renderVisibleItems();
     }
-  };
-
-  let isDragging = false;
-  let dragStartX = 0;
-  let thumbStartLeft = 0;
-
-  progressThumb.onmousedown = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    isDragging = true;
-    dragStartX = e.clientX;
-    thumbStartLeft = progressThumb.offsetLeft;
-    document.body.style.userSelect = 'none';
-  };
-
-  document.addEventListener('mousemove', (e) => {
-    if (!isDragging) return;
-    const deltaX = e.clientX - dragStartX;
-    const newLeft = thumbStartLeft + deltaX;
-    const trackWidth = cachedTrackWidth;
-    const thumbWidth = progressThumb.offsetWidth;
-    const maxLeft = trackWidth - thumbWidth;
-    const clampedLeft = Math.max(0, Math.min(maxLeft, newLeft));
-    const scrollProgress = maxLeft > 0 ? clampedLeft / maxLeft : 0;
-    const targetIndex = Math.round(scrollProgress * (store.allImages.length - 1));
-    if (targetIndex >= 0 && targetIndex < store.allImages.length && targetIndex !== store.currentImageIndex) {
-      onIndexChange(targetIndex);
-    }
+  }, { passive: true });
+  
+  store.on('settingsChanged', () => {
+    centerOnCurrent();
+    renderVisibleItems();
   });
 
-  document.addEventListener('mouseup', () => {
-    if (isDragging) {
-      isDragging = false;
-      document.body.style.userSelect = '';
-      wakeUpProgressBar();
-    }
-  });
-
-  progressThumb.onclick = (e) => e.stopPropagation();
-
-  return { update, getElements: () => [progressTrack, thumbPanel], wakeUpProgressBar };
+  return {
+    getElement: () => thumbPanel,
+    update,
+    openPanel,
+    closePanel,
+    isActive: () => isPanelActive
+  };
 }
