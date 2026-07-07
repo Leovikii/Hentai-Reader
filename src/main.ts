@@ -54,8 +54,8 @@ import { createFloatControl } from './ui/float-control';
     processBatch(initData.links, store.currPage, hiddenBox, false, window.location.href);
   }
 
-  // Initialize single page mode with lazy wrapper for circular dependency
-  let spmHandle: ReturnType<typeof initSinglePageMode>;
+  // Initialize single page mode
+  const spmHandle = initSinglePageMode();
 
   createFloatControl({
     open: () => spmHandle.open(),
@@ -64,8 +64,6 @@ import { createFloatControl } from './ui/float-control';
     getOverlayElement: () => spmHandle.getOverlayElement(),
     jumpTo: (index: number) => spmHandle.jumpTo(index),
   });
-
-  spmHandle = initSinglePageMode();
 
 
 

@@ -6,6 +6,8 @@ export const i18n = {
   autoPlay: isZH ? '自动翻页' : 'Auto Play',
   settings: isZH ? '设置' : 'Settings',
   backToTop: isZH ? '回到顶部' : 'Back to Top',
+  play: isZH ? '播放' : 'Play',
+  pause: isZH ? '暂停' : 'Pause',
 
   // Settings Panel
   scrollMode: isZH ? '卷轴模式' : 'Scroll Mode',

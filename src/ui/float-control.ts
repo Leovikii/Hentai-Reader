@@ -1,6 +1,6 @@
 import './float-control.css';
 import { store } from '../state/store';
-import { svgReader, svgSettings, svgTop, svgScroll } from '../utils/icons';
+import { svgReader, svgSettings, svgTop, svgScroll, svgPlay, svgPause } from '../utils/icons';
 import { createSettingsPanel } from './settings-panel';
 import { i18n } from '../utils/i18n';
 import type { SinglePageModeHandle } from '../types';
@@ -26,12 +26,23 @@ export function createFloatControl(spmHandle: SinglePageModeHandle): void {
   // Buttons: Top -> Mode -> Settings
   const topBtn = document.createElement('div');
   topBtn.className = 'bm-btn bm-top-btn';
-  topBtn.innerHTML = svgTop;
-  topBtn.title = i18n.backToTop;
+  const updateTopBtn = () => {
+    if (spmHandle.isActive()) {
+      topBtn.innerHTML = store.autoPlay ? svgPause : svgPlay;
+      topBtn.title = store.autoPlay ? i18n.pause : i18n.play;
+    } else {
+      topBtn.innerHTML = svgTop;
+      topBtn.title = i18n.backToTop;
+    }
+  };
+
+  updateTopBtn();
+
   topBtn.onclick = (e) => {
     e.stopPropagation();
     if (spmHandle.isActive()) {
-      spmHandle.jumpTo(0);
+      store.autoPlay = !store.autoPlay;
+      store.emit('settingsChanged');
     } else {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -50,9 +61,14 @@ export function createFloatControl(spmHandle: SinglePageModeHandle): void {
     }
   };
 
-  // Sync mode button icon
+  // Sync button icons
   store.on('readerModeChanged', () => {
     modeBtn.innerHTML = spmHandle.isActive() ? svgScroll : svgReader;
+    updateTopBtn();
+  });
+
+  store.on('settingsChanged', () => {
+    updateTopBtn();
   });
 
   const settings = createSettingsPanel(floatControl);

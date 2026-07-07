@@ -2,9 +2,9 @@ export const svgSettings = `<svg viewBox="0 0 24 24"><path d="M19.14,12.94c0.04-
 
 export const svgReader = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>`;
 
-export const svgPlay = `<svg class="pswp__icn" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><polygon points="7 5 19 12 7 19 7 5"/></svg>`;
+export const svgPlay = `<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>`;
 
-export const svgPause = `<svg class="pswp__icn" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>`;
+export const svgPause = `<svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;
 
 export const svgTop = `<svg viewBox="0 0 24 24"><path d="M4 4h16v2H4V4zm4 8l1.41 1.41L11 11.83V22h2V11.83l1.59 1.58L16 12l-4-4-4 4z"/></svg>`;
 
