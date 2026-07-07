@@ -1,5 +1,6 @@
 import { store } from '../state/store';
 import { i18n } from '../utils/i18n';
+import { svgClose } from '../utils/icons';
 
 export interface SettingsPanelHandle {
   getContainerElement: () => HTMLElement;
@@ -25,12 +26,24 @@ export function createSettingsPanel(): SettingsPanelHandle {
   const bottomSheet = document.createElement('div');
   bottomSheet.className = 'settings-bottom-sheet';
 
-  // Header/drag handle area for aesthetics
+  // Header with title and close button
   const sheetHeader = document.createElement('div');
   sheetHeader.className = 'settings-sheet-header';
-  const dragHandle = document.createElement('div');
-  dragHandle.className = 'settings-drag-handle';
-  sheetHeader.appendChild(dragHandle);
+
+  const title = document.createElement('div');
+  title.className = 'settings-title';
+  title.textContent = i18n.settings;
+
+  const closeBtn = document.createElement('div');
+  closeBtn.className = 'settings-close-btn';
+  closeBtn.innerHTML = svgClose.replace('class="pswp__icn"', '');
+  closeBtn.onclick = (e) => {
+    e.stopPropagation();
+    hide();
+  };
+
+  sheetHeader.appendChild(title);
+  sheetHeader.appendChild(closeBtn);
   bottomSheet.appendChild(sheetHeader);
 
   SETTINGS.forEach(({ label, key }) => {

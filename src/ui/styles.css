@@ -43,8 +43,11 @@ html.scroll-mode #gdt { display: flex; flex-direction: column; align-items: cent
   .settings-bottom-sheet { max-width: 480px; left: 50%; transform: translateX(-50%); border-radius: 16px 16px 0 0; border: 1px solid rgba(255, 255, 255, 0.05); border-bottom: none; }
 }
 
-.settings-sheet-header { width: 100%; height: 30px; display: flex; justify-content: center; align-items: center; margin-bottom: 10px; }
-.settings-drag-handle { width: 40px; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px; }
+.settings-sheet-header { position: relative; width: 100%; height: 48px; display: flex; justify-content: center; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.settings-title { font-size: 18px; font-weight: 600; color: #fff; margin: 0; }
+.settings-close-btn { position: absolute; right: 0; top: 0; bottom: 0; margin: auto; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.2s; color: rgba(255,255,255,0.6); }
+.settings-close-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+.settings-close-btn svg { width: 22px; height: 22px; stroke: currentColor; }
 
 /* Settings items */
 .settings-item { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; font-size: 15px; color: #eee; }
@@ -154,6 +157,10 @@ html.scroll-mode #gdt { display: flex; flex-direction: column; align-items: cent
   .sp-thumb-panel.position-left .sp-thumb-item, .sp-thumb-panel.position-right .sp-thumb-item { width: 194px; height: 140px; }
 
   /* Settings Panel Sizing */
+  .settings-sheet-header { height: 64px; margin-bottom: 24px; }
+  .settings-title { font-size: 24px; }
+  .settings-close-btn { width: 48px; height: 48px; }
+  .settings-close-btn svg { width: 28px; height: 28px; }
   .settings-item { margin-bottom: 36px; font-size: 22px; font-weight: 600; flex-wrap: wrap; gap: 16px; }
   .toggle-switch { width: 80px; height: 46px; border-radius: 23px; flex-shrink: 0; }
   .toggle-slider { width: 42px; height: 42px; top: 2px; left: 2px; }
