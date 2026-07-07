@@ -1,0 +1,134 @@
+/* Floating Bookmark Control */
+.bookmark-control {
+  position: fixed;
+  z-index: 2147483647;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(30, 30, 30, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  padding: 12px 6px;
+  gap: 12px;
+  transition: opacity 0.3s, left 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), right 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
+  transform: translateY(-50%);
+}
+
+.bookmark-control.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.bookmark-control:not(.dragging) {
+  opacity: 0.4;
+}
+
+.bookmark-control:not(.dragging):hover {
+  opacity: 1;
+}
+
+.bookmark-control.left-side {
+  left: 0;
+  border-radius: 0 24px 24px 0;
+  border-left: none;
+  padding: 12px 6px 12px 2px;
+}
+
+.bookmark-control.right-side {
+  right: 0;
+  border-radius: 24px 0 0 24px;
+  border-right: none;
+  padding: 12px 2px 12px 6px;
+}
+
+/* Buttons inside Bookmark */
+.bm-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: transparent;
+}
+
+.bm-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: scale(1.1);
+}
+
+.bm-btn svg {
+  width: 20px;
+  height: 20px;
+  fill: #fff;
+  opacity: 0.8;
+}
+
+.bm-btn:hover svg {
+  opacity: 1;
+}
+
+.bm-mode-btn {
+  background: var(--accent);
+  width: 44px;
+  height: 44px;
+  box-shadow: 0 2px 8px rgba(245, 150, 170, 0.4);
+}
+
+.bm-mode-btn:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 4px 12px rgba(245, 150, 170, 0.6);
+  transform: scale(1.05);
+}
+
+.bm-mode-btn svg {
+  width: 22px;
+  height: 22px;
+  opacity: 1;
+}
+
+
+@media (max-width: 768px) {
+  /* Enlarge bookmark controls on mobile */
+  .bookmark-control {
+    padding: 18px 10px;
+    gap: 18px;
+  }
+
+  .bookmark-control.left-side {
+    padding: 18px 10px 18px 6px;
+  }
+
+  .bookmark-control.right-side {
+    padding: 18px 6px 18px 10px;
+  }
+
+  .bm-btn {
+    width: 60px;
+    height: 60px;
+  }
+
+  .bm-btn svg {
+    width: 32px;
+    height: 32px;
+  }
+
+  .bm-mode-btn {
+    width: 68px;
+    height: 68px;
+  }
+
+  .bm-mode-btn svg {
+    width: 36px;
+    height: 36px;
+  }
+
+}

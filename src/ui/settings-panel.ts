@@ -1,3 +1,4 @@
+import './settings-panel.css';
 import { store } from '../state/store';
 import { i18n } from '../utils/i18n';
 import { svgClose } from '../utils/icons';

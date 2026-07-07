@@ -1,6 +1,7 @@
 import PhotoSwipe from 'photoswipe';
 import 'photoswipe/style.css';
 
+import './overlay.css';
 import { store } from '../../state/store';
 import type { PageLink } from '../../types/site-adapter';
 import { qa } from '../../utils/dom';

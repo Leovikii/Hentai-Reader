@@ -1,3 +1,4 @@
+import './float-control.css';
 import { store } from '../state/store';
 import { svgReader, svgSettings, svgTop, svgScroll } from '../utils/icons';
 import { createSettingsPanel } from './settings-panel';
@@ -85,10 +86,6 @@ export function createFloatControl(spmHandle: SinglePageModeHandle): void {
   floatControl.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
     
-    if (settings.isOpen()) {
-      settings.hide();
-    }
-    
     isDragging = true;
     dragMoved = false;
     startY = e.clientY;
@@ -103,7 +100,12 @@ export function createFloatControl(spmHandle: SinglePageModeHandle): void {
     if (!isDragging) return;
     
     const deltaY = e.clientY - startY;
-    if (Math.abs(deltaY) > 5) dragMoved = true;
+    if (Math.abs(deltaY) > 5) {
+      if (!dragMoved && settings.isOpen()) {
+        settings.hide();
+      }
+      dragMoved = true;
+    }
 
     const newCenterY = startTop + deltaY;
     const maxCenterY = window.innerHeight - (floatControl.offsetHeight / 2);

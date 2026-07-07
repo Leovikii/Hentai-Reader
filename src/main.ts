@@ -1,6 +1,6 @@
 import 'virtual:uno.css';
 import 'photoswipe/style.css';
-import './ui/styles.css';
+import './ui/global.css';
 import { store } from './state/store';
 import { SiteManager } from './sites/site-manager';
 import { processBatch, setupAutoScroll } from './features/scroll-mode';
