@@ -9,7 +9,7 @@ import { createSidebar } from './thumbnail-panel';
 import { createAutoPlay } from './auto-play';
 import { createStatusHUD } from '../components/status-hud';
 import { i18n } from '../../utils/i18n';
-import { svgPlay, svgPause } from '../../utils/icons';
+import { svgPlay, svgPause, svgClose, svgZoom, svgArrowPrev, svgArrowNext } from '../../utils/icons';
 import type { SinglePageModeHandle } from '../../types';
 
 export interface SinglePageOverlayDeps {
@@ -192,6 +192,10 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
       arrowPrev: false,
       arrowNext: false,
       doubleTapAction: false,
+      closeSVG: svgClose,
+      zoomSVG: svgZoom,
+      arrowPrevSVG: svgArrowPrev,
+      arrowNextSVG: svgArrowNext,
       initialZoomLevel: (zoomLevelObject: any) => {
         if (!zoomLevelObject.panAreaSize || !zoomLevelObject.elementSize) return zoomLevelObject.fit;
         const hRatio = zoomLevelObject.panAreaSize.x / zoomLevelObject.elementSize.x;

@@ -193,9 +193,9 @@ export function createThumbnailPanel(
     
     if (isVertical()) {
       content.style.width = '100%';
-      content.style.height = `${total * itemSize}px`;
+      content.style.height = `${total * itemSize + 16}px`;
     } else {
-      content.style.width = `${total * itemSize}px`;
+      content.style.width = `${total * itemSize + 16}px`;
       content.style.height = '100%';
     }
 
@@ -219,9 +219,9 @@ export function createThumbnailPanel(
         content.appendChild(el);
       }
       if (isVertical()) {
-        el.style.transform = `translateY(${i * itemSize}px)`;
+        el.style.transform = `translateY(${i * itemSize + 8}px)`;
       } else {
-        el.style.transform = `translateX(${i * itemSize}px)`;
+        el.style.transform = `translateX(${i * itemSize + 8}px)`;
       }
       renderItemContent(el, i);
     }

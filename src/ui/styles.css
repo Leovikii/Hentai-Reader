@@ -104,7 +104,7 @@ html.scroll-mode #gdt { display: flex; flex-direction: column; align-items: cent
 .sp-sidebar-track.position-right .sp-sidebar-label { right: calc(100% + 16px); top: 50%; transform: translateY(-50%); }
 .sp-sidebar-track:hover .sp-sidebar-label { opacity: 1; }
 
-.sp-thumb-panel { position: absolute; background: rgba(20,20,20,0.95); border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 -4px 16px rgba(0,0,0,0.5); overflow: hidden; pointer-events: none; display: flex; z-index: 11; opacity: 0; transition: opacity 0.3s, transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); -webkit-user-select: none; user-select: none; }
+.sp-thumb-panel { position: absolute; background: rgba(20,20,20,0.95); border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 -4px 16px rgba(0,0,0,0.5); pointer-events: none; display: flex; z-index: 11; opacity: 0; transition: opacity 0.3s, transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); -webkit-user-select: none; user-select: none; }
 .sp-thumb-panel.position-bottom { bottom: 32px; left: 50%; transform: translateX(-50%) translateY(20px); flex-direction: row; max-width: 60%; width: fit-content; height: 116px; }
 .sp-thumb-panel.position-bottom.active { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
 .sp-thumb-panel.position-top { top: 32px; left: 50%; transform: translateX(-50%) translateY(-20px); flex-direction: row; max-width: 60%; width: fit-content; height: 116px; }
@@ -114,7 +114,7 @@ html.scroll-mode #gdt { display: flex; flex-direction: column; align-items: cent
 .sp-thumb-panel.position-right { right: 32px; top: 50%; transform: translateY(-50%) translateX(20px); flex-direction: column; max-height: 60%; height: fit-content; width: 116px; }
 .sp-thumb-panel.position-right.active { opacity: 1; transform: translateY(-50%) translateX(0); pointer-events: auto; }
 
-.sp-thumb-viewport { flex: 1; min-width: 0; min-height: 0; position: relative; overflow: hidden; }
+.sp-thumb-viewport { flex: 1; min-width: 0; min-height: 0; position: relative; border-radius: inherit; overflow: hidden; }
 .sp-thumb-content { position: relative; width: 100%; height: 100%; }
 
 .sp-thumb-item { position: absolute; border-radius: 4px; overflow: hidden; cursor: pointer; border: 2px solid transparent; transition: border-color 0.15s; box-sizing: border-box; }
@@ -126,9 +126,11 @@ html.scroll-mode #gdt { display: flex; flex-direction: column; align-items: cent
 .sp-thumb-img { width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
 .sp-thumb-ph { width: 100%; height: 100%; background: #222; display: flex; align-items: center; justify-content: center; color: #555; font-family: monospace; font-size: 13px; -webkit-user-select: none; user-select: none; }
 .sp-thumb-label { position: absolute; bottom: 0; right: 0; padding: 1px 5px; background: rgba(0,0,0,0.5); color: rgba(255,255,255,0.6); font-family: monospace; font-size: 11px; border-radius: 4px 0 0 0; pointer-events: none; }
-.sp-thumb-counter { display: flex; align-items: center; justify-content: center; color: #999; font-family: monospace; font-size: 13px; -webkit-user-select: none; user-select: none; }
-.sp-thumb-panel.position-bottom .sp-thumb-counter, .sp-thumb-panel.position-top .sp-thumb-counter { padding: 0 12px; border-left: 1px solid rgba(255,255,255,0.08); }
-.sp-thumb-panel.position-left .sp-thumb-counter, .sp-thumb-panel.position-right .sp-thumb-counter { padding: 12px 0; border-top: 1px solid rgba(255,255,255,0.08); }
+.sp-thumb-counter { position: absolute; display: flex; align-items: center; justify-content: center; background: rgba(30, 30, 30, 0.75); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 12px; font-weight: 500; letter-spacing: 0.5px; padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 4px 12px rgba(0,0,0,0.3); pointer-events: none; z-index: 20; white-space: nowrap; }
+.sp-thumb-panel.position-bottom .sp-thumb-counter { top: -36px; left: 50%; transform: translateX(-50%); }
+.sp-thumb-panel.position-top .sp-thumb-counter { bottom: -36px; left: 50%; transform: translateX(-50%); }
+.sp-thumb-panel.position-left .sp-thumb-counter { bottom: -44px; left: 50%; transform: translateX(-50%); font-size: 14px; padding: 6px 16px; border-radius: 16px; }
+.sp-thumb-panel.position-right .sp-thumb-counter { bottom: -44px; left: 50%; transform: translateX(-50%); font-size: 14px; padding: 6px 16px; border-radius: 16px; }
 
 /* Status HUD (Top-Center) */
 .sp-hud-container { position: absolute; top: 40px; left: 50%; transform: translateX(-50%); z-index: 100; opacity: 0; pointer-events: none; transition: opacity 0.3s ease, transform 0.3s ease; }
