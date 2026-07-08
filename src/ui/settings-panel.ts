@@ -12,12 +12,13 @@ export interface SettingsPanelHandle {
 
 interface SettingItem {
   label: string;
-  key: keyof Pick<typeof store.settings, 'scrollMode' | 'showControl' | 'autoEnterSinglePage'>;
+  key: keyof Pick<typeof store.settings, 'scrollMode' | 'showControl' | 'autoEnterSinglePage' | 'clickToEnterReader'>;
 }
 
 const SETTINGS: SettingItem[] = [
   { label: i18n.scrollMode, key: 'scrollMode' },
   { label: i18n.autoEnter, key: 'autoEnterSinglePage' },
+  { label: i18n.clickToEnter, key: 'clickToEnterReader' },
 ];
 
 export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHandle {

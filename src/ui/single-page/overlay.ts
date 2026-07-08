@@ -551,7 +551,9 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
                }
             });
             
-            const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+            // Use media query to detect true touch devices (no hover capability) 
+            // instead of maxTouchPoints which is true on many Windows laptops
+            const isTouchDevice = window.matchMedia('(hover: none)').matches;
             if (isTouchDevice) {
               if (isVisible) {
                  sidebar.openPanel(false); 
@@ -589,7 +591,11 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
     if (pswp) {
       const p = pswp;
       pswp = null;
-      p.destroy();
+      try {
+        p.destroy();
+      } catch (err) {
+        console.error('[Hentai-Reader] Error destroying PhotoSwipe:', err);
+      }
     }
 
     if (store.settings.scrollMode) {
@@ -598,8 +604,8 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
         const targetImg = currentImages[store.currentImageIndex];
         if (targetImg) {
           setTimeout(() => {
-            targetImg.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }, 100);
+            targetImg.scrollIntoView({ behavior: 'auto', block: 'center' });
+          }, 10);
         }
       }
     }

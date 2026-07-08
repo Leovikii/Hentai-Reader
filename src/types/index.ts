@@ -2,6 +2,7 @@ export interface UserSettings {
   scrollMode: boolean;
   showControl: boolean;
   autoEnterSinglePage: boolean;
+  clickToEnterReader: boolean;
   autoPlayInterval: number;
   thumbnailPosition: 'top' | 'bottom' | 'left' | 'right';
 }
@@ -17,7 +18,7 @@ export interface AppConfig {
 }
 
 export interface SinglePageModeHandle {
-  open: () => void;
+  open: (startIdx?: number) => void;
   close: () => void;
   isActive: () => boolean;
   getOverlayElement: () => HTMLElement;

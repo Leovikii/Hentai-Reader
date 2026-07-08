@@ -44,7 +44,13 @@ export function createFloatControl(spmHandle: SinglePageModeHandle): void {
       store.autoPlay = !store.autoPlay;
       store.emit('settingsChanged');
     } else {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      // Use scrollIntoView to support custom scroll containers (e.g., 18comic)
+      const firstImg = document.querySelector('.r-img, .r-ph') as HTMLElement;
+      if (firstImg) {
+        firstImg.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
     }
   };
 

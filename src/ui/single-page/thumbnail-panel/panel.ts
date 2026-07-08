@@ -212,7 +212,17 @@ export function createThumbnailPanel(
     return isVertical() ? viewport.scrollTop : viewport.scrollLeft;
   }
 
+  let isProgrammaticScroll = false;
+  let programmaticScrollTimer: ReturnType<typeof setTimeout>;
+
   function setScrollOffset(val: number): void {
+    const current = getScrollOffset();
+    if (Math.abs(current - val) < 1) return;
+    
+    isProgrammaticScroll = true;
+    if (programmaticScrollTimer) clearTimeout(programmaticScrollTimer);
+    programmaticScrollTimer = setTimeout(() => { isProgrammaticScroll = false; }, 50);
+
     if (isVertical()) {
       viewport.scrollTop = val;
     } else {
@@ -305,6 +315,14 @@ export function createThumbnailPanel(
   let lastScrollPos = 0;
   viewport.addEventListener('scroll', () => {
     renderVisibleItems();
+    
+    if (isProgrammaticScroll) {
+      isProgrammaticScroll = false;
+      if (programmaticScrollTimer) clearTimeout(programmaticScrollTimer);
+      lastScrollPos = getScrollOffset();
+      return;
+    }
+
     const currentScroll = getScrollOffset();
     const isScrollingUp = currentScroll < lastScrollPos;
     const isScrollingDown = currentScroll > lastScrollPos;

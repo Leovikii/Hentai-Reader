@@ -60,13 +60,7 @@ import { initViewportScale } from './utils/viewport';
   // Initialize single page mode
   const spmHandle = initSinglePageMode();
 
-  createFloatControl({
-    open: () => spmHandle.open(),
-    close: () => spmHandle.close(),
-    isActive: () => spmHandle.isActive(),
-    getOverlayElement: () => spmHandle.getOverlayElement(),
-    jumpTo: (index: number) => spmHandle.jumpTo(index),
-  });
+  createFloatControl(spmHandle);
 
 
 
@@ -75,5 +69,20 @@ import { initViewportScale } from './utils/viewport';
     setTimeout(() => spmHandle.open(), 1000);
   }
 
+  // Native click to enter reader mode
+  document.body.addEventListener('click', (e) => {
+    if (!store.settings.clickToEnterReader || !store.settings.scrollMode || spmHandle.isActive()) return;
+    const target = e.target as HTMLElement;
+    const imgTarget = target.closest('.r-img, .r-ph');
+    if (imgTarget) {
+      e.preventDefault();
+      e.stopPropagation(); // Stop native scripts from interfering
+      const allImages = Array.from(document.querySelectorAll('.r-img, .r-ph'));
+      const index = allImages.indexOf(imgTarget);
+      if (index !== -1) {
+        spmHandle.open(index);
+      }
+    }
+  }, true); // Use capture phase to intercept before native scripts
 
 })();

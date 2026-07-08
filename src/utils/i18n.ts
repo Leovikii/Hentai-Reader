@@ -12,6 +12,7 @@ export const i18n = {
   // Settings Panel
   scrollMode: isZH ? '卷轴模式' : 'Scroll Mode',
   autoEnter: isZH ? '自动进入阅读器' : 'Auto Enter Reader',
+  clickToEnter: isZH ? '点击图片进入阅读器' : 'Click Image to Enter Reader',
   readerWidth: isZH ? '阅读器最大宽度' : 'Reader Max Width',
   playSpeed: isZH ? '自动翻页间隔 (秒)' : 'Auto Play Interval (s)',
   thumbnailPosition: isZH ? '缩略图位置' : 'Thumbnail Position',
