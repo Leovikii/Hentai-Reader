@@ -132,7 +132,15 @@ export function loadPlaceholderImage(placeholder: HTMLElement) {
               img.src = newRes.src;
               img.dataset.realSrc = newRes.src;
               currentNlToken = newRes.nl;
-              if (placeholder.parentNode) placeholder.parentNode.replaceChild(img, placeholder);
+              if (placeholder.parentNode) {
+                placeholder.parentNode.replaceChild(img, placeholder);
+                // Node-switch succeeded — notify overlay to refresh this slide
+                const storeIdx = store.allImages.indexOf(placeholder);
+                if (storeIdx !== -1) {
+                  store.allImages[storeIdx] = img;
+                  document.dispatchEvent(new CustomEvent('sp-image-loaded', { detail: { index: storeIdx } }));
+                }
+              }
             } else {
               showError();
             }

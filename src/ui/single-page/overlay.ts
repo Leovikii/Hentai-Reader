@@ -33,8 +33,19 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
       store.allImages = freshImages;
       sidebar.update();
       if (pswp) {
-        // Just let PhotoSwipe know the total number of items changed
-        pswp.refreshSlideContent(pswp.currIndex);
+        // PhotoSwipe keeps only 3 live holders (prev/current/next). When we were on
+        // the last image of a page, the "next" holder was pre-built for an index that
+        // was still out of bounds, so its slide stayed undefined. After a page load
+        // grows the count that index becomes valid, but the stale empty holder is
+        // never rebuilt on its own — goTo(newIndex) then moves that empty holder into
+        // the current slot, leaving currSlide undefined and freezing the wheel handler.
+        // refreshSlideContent rebuilds a specific holder by index, so refresh the
+        // current slide plus its immediate neighbours to repopulate any empty holder
+        // the count change just made reachable.
+        const c = pswp.currIndex;
+        for (let i = c - 1; i <= c + 1; i++) {
+          if (i >= 0 && i < store.allImages.length) pswp.refreshSlideContent(i);
+        }
       }
     }
   }
@@ -250,7 +261,7 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
     pswp.on('destroy', () => {
       window.removeEventListener('sp-mobile-ui-interaction-start', cancelMobileUITimeout);
       window.removeEventListener('sp-mobile-ui-interaction-end', triggerMobileUITimeout);
-      window.removeEventListener('sp-image-loaded', handleImageLoaded);
+      document.removeEventListener('sp-image-loaded', handleImageLoaded);
     });
 
     // A placeholder can be upgraded to a real <img> outside the overlay's own
@@ -264,7 +275,7 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
         pswp.refreshSlideContent(index);
       }
     }
-    window.addEventListener('sp-image-loaded', handleImageLoaded);
+    document.addEventListener('sp-image-loaded', handleImageLoaded);
 
     const fetchingState = new Map<string, 'resolving' | 'downloading'>();
     const tempImages = new Map<number, HTMLImageElement>(); // Keep track to abort
