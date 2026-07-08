@@ -345,10 +345,17 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
           // neighbors; closer to the current index = higher priority.
           const distance = pswp ? Math.abs(e.index - pswp.currIndex) : 0;
           const priority = 100 - distance;
+          // Guard against stale async callbacks: `myPswp` pins the instance this
+          // request belongs to (a close+reopen swaps `pswp`), and findLive()
+          // re-locates the slide by URL because loadPrevPage prepends and shifts
+          // every index — the captured e.index goes stale mid-flight.
+          const myPswp = pswp;
+          const findLive = () => store.allImages.findIndex(im => (im.dataset.url || im.dataset.viewerUrl) === viewerUrl);
           prefetchImageUrl(viewerUrl, undefined, false, priority).then(res => {
+            if (!myPswp || myPswp !== pswp) { fetchingState.delete(viewerUrl); return; }
             if (res && res.src) {
               fetchingState.set(viewerUrl, 'downloading');
-              if (pswp && pswp.currIndex === e.index) {
+              if (myPswp.currIndex === findLive()) {
                  hud.show({ status: 'loading', text: i18n.downloading });
               }
               const img = new Image();
@@ -356,17 +363,20 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
               img.onload = () => {
                 store.imageDimensions.set(viewerUrl, { w: img.naturalWidth, h: img.naturalHeight });
                 fetchingState.delete(viewerUrl);
-                if (pswp) {
-                  if (pswp.currIndex === e.index) hud.hide();
-                  pswp.refreshSlideContent(e.index);
-                  if (pswp.currIndex === e.index && store.autoPlay) {
-                    autoPlay.start();
-                  }
+                if (!myPswp || myPswp !== pswp) return;
+                const idx = findLive();
+                if (idx === -1) return;
+                if (myPswp.currIndex === idx) hud.hide();
+                myPswp.refreshSlideContent(idx);
+                if (myPswp.currIndex === idx && store.autoPlay) {
+                  autoPlay.start();
                 }
               };
               img.onerror = () => {
                  fetchingState.delete(viewerUrl);
-                 if (pswp && pswp.currIndex === e.index) {
+                 if (!myPswp || myPswp !== pswp) return;
+                 const idx = findLive();
+                 if (idx !== -1 && myPswp.currIndex === idx) {
                     hud.show({ status: 'error', text: i18n.loadFailed });
                     setTimeout(() => hud.hide(), 3000);
                  }
@@ -374,11 +384,13 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
               img.src = res.src;
             } else {
               fetchingState.delete(viewerUrl);
-              if (pswp && pswp.currIndex === e.index) hud.hide();
+              if (myPswp && myPswp === pswp && myPswp.currIndex === findLive()) hud.hide();
             }
           }).catch(() => {
              fetchingState.delete(viewerUrl);
-             if (pswp && pswp.currIndex === e.index) {
+             if (!myPswp || myPswp !== pswp) return;
+             const idx = findLive();
+             if (idx !== -1 && myPswp.currIndex === idx) {
                 hud.show({ status: 'error', text: i18n.resolveImageFailed });
                 setTimeout(() => hud.hide(), 3000);
              }
