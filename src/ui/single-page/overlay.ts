@@ -551,8 +551,6 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
                }
             });
             
-            // Use media query to detect true touch devices (no hover capability) 
-            // instead of maxTouchPoints which is true on many Windows laptops
             const isTouchDevice = window.matchMedia('(hover: none)').matches;
             if (isTouchDevice) {
               if (isVisible) {
