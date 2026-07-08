@@ -6,9 +6,12 @@ import { SiteManager } from './sites/site-manager';
 import { processBatch, setupAutoScroll } from './features/scroll-mode';
 import { initSinglePageMode } from './features/single-page-mode';
 import { createFloatControl } from './ui/float-control';
+import { initViewportScale } from './utils/viewport';
 
 
 (async function main() {
+  initViewportScale();
+
   const adapter = SiteManager.getAdapter(window.location.href);
   if (!adapter) {
     return;

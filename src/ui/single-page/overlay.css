@@ -17,9 +17,14 @@
   pointer-events: auto;
 }
 
+.sp-close-btn {
+  transform: scale(var(--hr-scale, 1));
+  transform-origin: top right;
+}
+
 .sp-close-btn:hover {
   background: rgba(85, 85, 85, 0.9);
-  transform: scale(1.1);
+  transform: scale(calc(1.1 * var(--hr-scale, 1)));
 }
 
 /* Horizontal & Vertical Strip Components */
@@ -175,16 +180,20 @@
   height: 116px;
 }
 
+.sp-thumb-panel.position-top {
+  transform: translateX(-50%) translateY(-20px) scale(var(--hr-scale, 1));
+}
+
 .sp-thumb-panel.position-top.active {
   opacity: 1;
-  transform: translateX(-50%) translateY(0);
+  transform: translateX(-50%) translateY(0) scale(var(--hr-scale, 1));
   pointer-events: auto;
 }
 
 .sp-thumb-panel.position-bottom {
   bottom: 32px;
   left: 50%;
-  transform: translateX(-50%) translateY(20px);
+  transform: translateX(-50%) translateY(20px) scale(var(--hr-scale, 1));
   flex-direction: row;
   max-width: 80%;
   width: fit-content;
@@ -193,14 +202,14 @@
 
 .sp-thumb-panel.position-bottom.active {
   opacity: 1;
-  transform: translateX(-50%) translateY(0);
+  transform: translateX(-50%) translateY(0) scale(var(--hr-scale, 1));
   pointer-events: auto;
 }
 
 .sp-thumb-panel.position-left {
   left: 32px;
   top: 50%;
-  transform: translateY(-50%) translateX(-20px);
+  transform: translateY(-50%) translateX(-20px) scale(var(--hr-scale, 1));
   flex-direction: column;
   max-height: 80%;
   height: fit-content;
@@ -209,14 +218,14 @@
 
 .sp-thumb-panel.position-left.active {
   opacity: 1;
-  transform: translateY(-50%) translateX(0);
+  transform: translateY(-50%) translateX(0) scale(var(--hr-scale, 1));
   pointer-events: auto;
 }
 
 .sp-thumb-panel.position-right {
   right: 32px;
   top: 50%;
-  transform: translateY(-50%) translateX(20px);
+  transform: translateY(-50%) translateX(20px) scale(var(--hr-scale, 1));
   flex-direction: column;
   max-height: 80%;
   height: fit-content;
@@ -225,7 +234,7 @@
 
 .sp-thumb-panel.position-right.active {
   opacity: 1;
-  transform: translateY(-50%) translateX(0);
+  transform: translateY(-50%) translateX(0) scale(var(--hr-scale, 1));
   pointer-events: auto;
 }
 
@@ -372,56 +381,40 @@
 }
 
 
-@media (max-width: 767px) {
-  .sp-thumb-panel.position-bottom {
-    bottom: 16px;
-    max-width: 80%;
-  }
+:root.hr-mobile .sp-thumb-panel.position-bottom {
+  bottom: 16px;
+  max-width: 80%;
+  height: 160px;
+}
 
-  .sp-thumb-panel.position-top {
-    top: 16px;
-    max-width: 80%;
-  }
+:root.hr-mobile .sp-thumb-panel.position-top {
+  top: 16px;
+  max-width: 80%;
+  height: 160px;
+}
 
-  .sp-thumb-panel.position-left {
-    left: 16px;
-    max-height: 80%;
-  }
+:root.hr-mobile .sp-thumb-panel.position-left {
+  left: 16px;
+  max-height: 80%;
+  width: 160px;
+}
 
-  .sp-thumb-panel.position-right {
-    right: 16px;
-    max-height: 80%;
-  }
+:root.hr-mobile .sp-thumb-panel.position-right {
+  right: 16px;
+  max-height: 80%;
+  width: 160px;
+}
 
-  /* Enlarge thumbnail items on mobile */
-  .sp-thumb-panel.position-bottom {
-    height: 210px;
-  }
+:root.hr-mobile .sp-thumb-panel.position-bottom .sp-thumb-item,
+:root.hr-mobile .sp-thumb-panel.position-top .sp-thumb-item {
+  width: 104px;
+  height: 144px;
+}
 
-  .sp-thumb-panel.position-top {
-    height: 210px;
-  }
-
-  .sp-thumb-panel.position-left {
-    width: 210px;
-  }
-
-  .sp-thumb-panel.position-right {
-    width: 210px;
-  }
-
-  .sp-thumb-panel.position-bottom .sp-thumb-item,
-  .sp-thumb-panel.position-top .sp-thumb-item {
-    width: 140px;
-    height: 194px;
-  }
-
-  .sp-thumb-panel.position-left .sp-thumb-item,
-  .sp-thumb-panel.position-right .sp-thumb-item {
-    width: 194px;
-    height: 140px;
-  }
-
+:root.hr-mobile .sp-thumb-panel.position-left .sp-thumb-item,
+:root.hr-mobile .sp-thumb-panel.position-right .sp-thumb-item {
+  width: 144px;
+  height: 104px;
 }
 
 /* Status HUD (Top-Center) */
@@ -436,10 +429,14 @@
   transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
+.sp-hud-container {
+  transform: translateX(-50%) scale(var(--hr-scale, 1));
+}
+
 .sp-hud-container.show {
   opacity: 1;
   pointer-events: auto;
-  transform: translate(-50%, 0);
+  transform: translate(-50%, 0) scale(var(--hr-scale, 1));
 }
 
 .sp-hud-box {

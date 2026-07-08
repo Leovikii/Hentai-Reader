@@ -186,32 +186,37 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
   backdrop.appendChild(bottomSheet);
 
   const show = () => {
-    backdrop.classList.add('show');
-    if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
-      requestAnimationFrame(() => {
-        const rect = anchorElement.getBoundingClientRect();
-        const panelRect = bottomSheet.getBoundingClientRect();
+    if (window.matchMedia('(hover: hover) and (pointer: fine)').matches && !document.documentElement.classList.contains('hr-mobile')) {
+      // Hardcode width for desktop to prevent CSS transition measurement issues
+      const panelWidth = 340;
+      const rect = anchorElement.getBoundingClientRect();
+      
+      // Temporarily display block to measure height if needed, but since it's just opacity: 0,
+      // getBoundingClientRect() works fine before 'show' is added
+      const panelRect = bottomSheet.getBoundingClientRect();
+      const panelHeight = panelRect.height || 300; // Fallback if 0
 
-        let top = rect.top + rect.height / 2 - panelRect.height / 2;
-        top = Math.max(16, Math.min(window.innerHeight - panelRect.height - 16, top));
+      let top = rect.top + rect.height / 2 - panelHeight / 2;
+      top = Math.max(16, Math.min(window.innerHeight - panelHeight - 16, top));
 
-        bottomSheet.style.top = `${top}px`;
-        bottomSheet.style.bottom = 'auto';
+      bottomSheet.style.top = `${top}px`;
+      bottomSheet.style.bottom = 'auto';
 
-        // Hardcode width for desktop to prevent CSS transition measurement issues
-        const panelWidth = 340;
-
-        if (rect.left < window.innerWidth / 2) {
-          bottomSheet.style.left = `${rect.right + 20}px`;
-          bottomSheet.style.transformOrigin = 'left center';
-        } else {
-          bottomSheet.style.left = `${rect.left - panelWidth - 20}px`;
-          bottomSheet.style.transformOrigin = 'right center';
-        }
-      });
+      if (rect.left < window.innerWidth / 2) {
+        bottomSheet.style.left = `${rect.right + 20}px`;
+        bottomSheet.style.transformOrigin = 'left center';
+      } else {
+        bottomSheet.style.left = `${rect.left - panelWidth - 20}px`;
+        bottomSheet.style.transformOrigin = 'right center';
+      }
+      
+      // Trigger reflow to ensure styles are applied before adding the show class
+      void bottomSheet.offsetHeight;
     } else {
       bottomSheet.style.cssText = '';
     }
+    
+    backdrop.classList.add('show');
   };
 
   const hide = () => {
