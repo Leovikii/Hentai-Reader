@@ -185,6 +185,8 @@ export function processBatch(links: PageLink[], pIndex: number, container?: HTML
                       document.body;
   }
 
+  const eagerLoad: HTMLElement[] = [];
+
   links.forEach((link, index) => {
     const url = link.url;
     const placeholder = document.createElement('div');
@@ -195,7 +197,7 @@ export function processBatch(links: PageLink[], pIndex: number, container?: HTML
     if (link.thumb) placeholder.dataset.thumb = link.thumb;
     if (link.thumbW) placeholder.dataset.thumbW = String(link.thumbW);
     if (link.thumbH) placeholder.dataset.thumbH = String(link.thumbH);
-    
+
     placeholder.innerHTML = `
       <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; transform: translateY(-20px);">
         <div style="display: flex; align-items: center; gap: 10px; background: rgba(20, 20, 20, 0.8); border: 1px solid rgba(255, 255, 255, 0.1); padding: 10px 20px; border-radius: 30px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5); backdrop-filter: blur(8px); margin-bottom: 16px;">
@@ -209,14 +211,25 @@ export function processBatch(links: PageLink[], pIndex: number, container?: HTML
       </div>
     `;
     fragment.appendChild(placeholder);
-    
+
     if (store.settings.scrollMode) {
       lazyLoadObserver?.observe(placeholder);
     } else {
       placeholder.dataset.lazyLoaded = 'true';
-      loadPlaceholderImage(placeholder);
+      eagerLoad.push(placeholder);
     }
   });
+
+  // Non-scroll mode eager-loads the whole batch up-front. When a prev page is
+  // prepended, the reader lands at the batch's tail (the image adjacent to where
+  // the user came from) and pages backward through it, so trigger loads tail-first
+  // — otherwise the FIFO limiter serves the head (which the user reaches last)
+  // first and the wanted tail image waits behind ~20 unwanted fetches. DOM/index
+  // order is untouched; only the fetch trigger order changes.
+  if (eagerLoad.length) {
+    const ordered = prepend ? eagerLoad.slice().reverse() : eagerLoad;
+    ordered.forEach(ph => loadPlaceholderImage(ph));
+  }
 
   batchDiv.appendChild(fragment);
   if (prepend && targetContainer.firstChild) {

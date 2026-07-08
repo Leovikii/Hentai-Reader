@@ -510,14 +510,17 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
            }
         }
 
-        // Prefetch node URLs (resolve only, not download) for next few slides so
-        // forward paging is instant. Only resolve up to 4 slides ahead, using low
-        // priority so the current slide always wins ehLimiter slots.
-        for (let offset = 1; offset <= 4; offset++) {
-          const idx = pswp.currIndex + offset;
-          if (idx >= store.allImages.length) break;
+        // Prefetch node URLs (resolve only, not download) for the next few slides
+        // in the direction of travel, so continued paging is instant. Backward
+        // navigation (e.g. into a just-prepended prev page) prefetches earlier
+        // indices, which is exactly where the user is headed. Low priority so the
+        // current slide always wins ehLimiter slots.
+        const prefetchDir = isNavigatingBackwards ? -1 : 1;
+        for (let step = 1; step <= 4; step++) {
+          const idx = pswp.currIndex + prefetchDir * step;
+          if (idx < 0 || idx >= store.allImages.length) break;
           const el = store.allImages[idx];
-          const vUrl = el.dataset.url || el.dataset.viewerUrl;
+          const vUrl = el?.dataset.url || el?.dataset.viewerUrl;
           if (vUrl && !store.resolvedUrls.has(vUrl) && !fetchingState.has(vUrl)) {
             prefetchImageUrl(vUrl, undefined, false, 10); // priority=10, won't block current
           }
