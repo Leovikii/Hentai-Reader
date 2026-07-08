@@ -88,7 +88,7 @@ export function createThumbnailPanel(
   }
 
   function getItemSize() {
-    return window.innerWidth <= 768 ? 140 : 72;
+    return document.documentElement.classList.contains('hr-mobile') ? 96 : 80;
   }
 
 

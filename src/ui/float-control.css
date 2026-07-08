@@ -106,37 +106,37 @@
 
 :root.hr-mobile .bookmark-control {
   /* Appropriate mobile sizing */
-  padding: 16px 10px;
-  gap: 16px;
-  border-radius: 28px;
+  padding: 12px 8px;
+  gap: 12px;
+  border-radius: 24px;
 }
 
 :root.hr-mobile .bookmark-control.left-side {
-  padding: 16px 10px 16px 6px;
-  border-radius: 0 28px 28px 0;
+  padding: 12px 8px 12px 6px;
+  border-radius: 0 24px 24px 0;
 }
 
 :root.hr-mobile .bookmark-control.right-side {
-  padding: 16px 6px 16px 10px;
-  border-radius: 28px 0 0 28px;
+  padding: 12px 6px 12px 8px;
+  border-radius: 24px 0 0 24px;
 }
 
 :root.hr-mobile .bm-btn {
+  width: 46px;
+  height: 46px;
+}
+
+:root.hr-mobile .bm-btn svg {
+  width: 26px;
+  height: 26px;
+}
+
+:root.hr-mobile .bm-mode-btn {
   width: 52px;
   height: 52px;
 }
 
-:root.hr-mobile .bm-btn svg {
+:root.hr-mobile .bm-mode-btn svg {
   width: 28px;
   height: 28px;
-}
-
-:root.hr-mobile .bm-mode-btn {
-  width: 60px;
-  height: 60px;
-}
-
-:root.hr-mobile .bm-mode-btn svg {
-  width: 32px;
-  height: 32px;
 }

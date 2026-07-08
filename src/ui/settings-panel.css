@@ -275,30 +275,30 @@
 
 
 :root.hr-mobile .settings-sheet-header {
-  height: 56px;
-  margin-bottom: 20px;
+  height: 48px;
+  margin-bottom: 16px;
 }
 
 :root.hr-mobile .settings-title {
-  font-size: 20px;
+  font-size: 18px;
 }
 
 :root.hr-mobile .settings-close-btn {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
 }
 
 :root.hr-mobile .settings-close-btn svg {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
 }
 
 :root.hr-mobile .settings-item {
-  margin-bottom: 28px;
-  font-size: 18px;
+  margin-bottom: 24px;
+  font-size: 16px;
   font-weight: 600;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 12px;
 }
 
 :root.hr-mobile .settings-item:last-child {
@@ -306,55 +306,55 @@
 }
 
 :root.hr-mobile .toggle-switch {
-  width: 64px;
-  height: 36px;
-  border-radius: 18px;
+  width: 52px;
+  height: 30px;
+  border-radius: 15px;
   flex-shrink: 0;
 }
 
 :root.hr-mobile .toggle-slider {
-  width: 32px;
-  height: 32px;
+  width: 26px;
+  height: 26px;
   top: 2px;
   left: 2px;
 }
 
 :root.hr-mobile .toggle-switch.on .toggle-slider {
-  left: 30px;
+  left: 24px;
 }
 
 :root.hr-mobile .stepper-control {
-  border-radius: 12px;
+  border-radius: 10px;
 }
 
 :root.hr-mobile .stepper-btn {
-  width: 48px;
-  height: 44px;
-  font-size: 24px;
+  width: 40px;
+  height: 36px;
+  font-size: 20px;
   font-weight: 400;
 }
 
 :root.hr-mobile .interval-input {
-  width: 64px;
-  height: 44px;
-  font-size: 20px;
+  width: 56px;
+  height: 36px;
+  font-size: 18px;
   font-weight: 600;
 }
 
 :root.hr-mobile .segment-control {
-  padding: 6px;
-  gap: 6px;
-  border-radius: 14px;
+  padding: 4px;
+  gap: 4px;
+  border-radius: 12px;
   display: flex;
   flex: 1;
-  min-width: 200px;
+  min-width: 180px;
 }
 
 :root.hr-mobile .segment-item {
   flex: 1;
-  padding: 10px 6px;
-  font-size: 16px;
-  border-radius: 10px;
+  padding: 8px 6px;
+  font-size: 14px;
+  border-radius: 8px;
   font-weight: 600;
   text-align: center;
   display: flex;
