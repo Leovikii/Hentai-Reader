@@ -5,13 +5,8 @@
 }
 
 /* Base styles — only applied in scroll mode */
-html.scroll-mode {
-  overflow-x: hidden;
-}
-
 html.scroll-mode body {
   margin: 0;
-  overflow: visible;
 }
 
 html.scroll-mode #gdt {
