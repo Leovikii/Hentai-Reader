@@ -120,6 +120,46 @@ export function createThumbnailPanel(
     itemPool.push(el);
   }
 
+  // Cache downscaled thumbnails keyed by source URL. Pooled items get recycled
+  // across indices, so without this every recycle re-runs drawImage scaling a
+  // full-res (2000px+) source down to 300px on the main thread. Caching the
+  // small canvas turns recycle into a cheap 300->300 blit. LRU-capped to bound
+  // memory (each entry ~0.5MB, so 60 ~= 30MB worst case).
+  const THUMB_CACHE_MAX = 60;
+  const thumbCache = new Map<string, HTMLCanvasElement>();
+
+  function getCachedThumb(src: string): HTMLCanvasElement | undefined {
+    const c = thumbCache.get(src);
+    if (c) { thumbCache.delete(src); thumbCache.set(src, c); } // LRU touch
+    return c;
+  }
+
+  function putCachedThumb(src: string, canvas: HTMLCanvasElement): void {
+    thumbCache.set(src, canvas);
+    if (thumbCache.size > THUMB_CACHE_MAX) {
+      const oldest = thumbCache.keys().next().value;
+      if (oldest !== undefined) thumbCache.delete(oldest);
+    }
+  }
+
+  function makeThumbCanvas(source: CanvasImageSource, natW: number, natH: number): HTMLCanvasElement {
+    let w = natW, h = natH;
+    if (w > 300) { h = (h * 300) / w; w = 300; }
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d');
+    if (ctx) ctx.drawImage(source, 0, 0, w, h);
+    return c;
+  }
+
+  function blitToCanvas(dest: HTMLCanvasElement, cache: HTMLCanvasElement): void {
+    dest.width = cache.width;
+    dest.height = cache.height;
+    const ctx = dest.getContext('2d');
+    if (ctx) ctx.drawImage(cache, 0, 0);
+  }
+
   function renderItemContent(el: HTMLElement, index: number): void {
     el.dataset.index = String(index);
     el.classList.toggle('sp-thumb-active', index === store.currentImageIndex);
@@ -149,36 +189,23 @@ export function createThumbnailPanel(
       }
       if (thumbCanvas.dataset.src !== thumbSrc) {
         thumbCanvas.dataset.src = thumbSrc;
-        
-        const MAX_W = 300;
-        if (isLoadedImg) {
-          let w = (img as HTMLImageElement).naturalWidth;
-          let h = (img as HTMLImageElement).naturalHeight;
-          if (w > MAX_W) {
-            h = (h * MAX_W) / w;
-            w = MAX_W;
-          }
-          thumbCanvas!.width = w;
-          thumbCanvas!.height = h;
-          const ctx = thumbCanvas!.getContext('2d');
-          if (ctx) ctx.drawImage(img as HTMLImageElement, 0, 0, w, h);
+
+        const cached = getCachedThumb(thumbSrc);
+        if (cached) {
+          blitToCanvas(thumbCanvas, cached);
+        } else if (isLoadedImg) {
+          const c = makeThumbCanvas(img as HTMLImageElement, (img as HTMLImageElement).naturalWidth, (img as HTMLImageElement).naturalHeight);
+          putCachedThumb(thumbSrc, c);
+          blitToCanvas(thumbCanvas, c);
         } else {
           const tempImg = new Image();
           tempImg.decoding = 'async';
           tempImg.onload = () => {
+            // Cache regardless, but only paint if this slot still wants this src.
+            const c = makeThumbCanvas(tempImg, tempImg.naturalWidth, tempImg.naturalHeight);
+            putCachedThumb(thumbSrc, c);
             if (thumbCanvas!.dataset.src === thumbSrc) {
-              let w = tempImg.naturalWidth;
-              let h = tempImg.naturalHeight;
-              if (w > MAX_W) {
-                h = (h * MAX_W) / w;
-                w = MAX_W;
-              }
-              thumbCanvas!.width = w;
-              thumbCanvas!.height = h;
-              const ctx = thumbCanvas!.getContext('2d');
-              if (ctx) {
-                ctx.drawImage(tempImg, 0, 0, w, h);
-              }
+              blitToCanvas(thumbCanvas!, c);
             }
           };
           tempImg.src = thumbSrc;

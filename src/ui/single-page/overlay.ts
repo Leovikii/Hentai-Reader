@@ -509,6 +509,19 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
              }
            }
         }
+
+        // Prefetch node URLs (resolve only, not download) for next few slides so
+        // forward paging is instant. Only resolve up to 4 slides ahead, using low
+        // priority so the current slide always wins ehLimiter slots.
+        for (let offset = 1; offset <= 4; offset++) {
+          const idx = pswp.currIndex + offset;
+          if (idx >= store.allImages.length) break;
+          const el = store.allImages[idx];
+          const vUrl = el.dataset.url || el.dataset.viewerUrl;
+          if (vUrl && !store.resolvedUrls.has(vUrl) && !fetchingState.has(vUrl)) {
+            prefetchImageUrl(vUrl, undefined, false, 10); // priority=10, won't block current
+          }
+        }
       }
     });
 
