@@ -136,9 +136,8 @@ export function createFloatControl(spmHandle: SinglePageModeHandle): void {
     isDragging = true;
     dragMoved = false;
     activePointerId = e.pointerId;
-    // Capture the pointer so we keep move/up even off the control, and stray
-    // page pointers (different id) can't drive it.
-    try { floatControl.setPointerCapture(e.pointerId); } catch (err) {}
+    // Don't capture yet — wait until actual drag begins (>5px move), so a plain
+    // tap on a button never captures and the button's click handler fires normally.
     startY = e.clientY;
 
     const rect = floatControl.getBoundingClientRect();
@@ -152,8 +151,12 @@ export function createFloatControl(spmHandle: SinglePageModeHandle): void {
 
     const deltaY = e.clientY - startY;
     if (Math.abs(deltaY) > 5) {
-      if (!dragMoved && settings.isOpen()) {
-        settings.hide();
+      if (!dragMoved) {
+        // Real drag started — capture now so we keep move/up even off the
+        // control and stray page pointers can't drive it. Deferring to here
+        // (rather than pointerdown) keeps taps clean so button clicks fire.
+        try { floatControl.setPointerCapture(e.pointerId); } catch (err) {}
+        if (settings.isOpen()) settings.hide();
       }
       dragMoved = true;
     }

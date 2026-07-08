@@ -80,6 +80,7 @@ export function loadPlaceholderImage(placeholder: HTMLElement) {
     if (res) {
       const img = document.createElement('img');
       img.className = 'r-img';
+      img.decoding = 'async';
       img.dataset.viewerUrl = url;
       img.dataset.realSrc = res.src;
       if (thumb) img.dataset.thumbSrc = thumb;

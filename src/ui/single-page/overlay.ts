@@ -108,6 +108,11 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
   // We will append sidebar elements to PhotoSwipe once it initializes
 
   function open(startIdx?: number): void {
+    // Guard against a second open() while already active (e.g. the
+    // autoEnterSinglePage timer firing after a manual open) — without this a
+    // new PhotoSwipe is built over the live one, orphaning the first instance.
+    if (isActive) return;
+
     store.allImages = Array.from(qa('.r-img, .r-ph')) as HTMLElement[];
     if (store.allImages.length === 0) {
       alert(i18n.waitImagesToLoad);
@@ -347,6 +352,7 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
                  hud.show({ status: 'loading', text: i18n.downloading });
               }
               const img = new Image();
+              img.decoding = 'async';
               img.onload = () => {
                 store.imageDimensions.set(viewerUrl, { w: img.naturalWidth, h: img.naturalHeight });
                 fetchingState.delete(viewerUrl);

@@ -37,7 +37,7 @@ html.scroll-mode #gdt {
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
   position: relative;
   content-visibility: auto;
-  contain-intrinsic-size: 100% 100vh;
+  contain-intrinsic-size: auto 100vh;
 }
 
 .r-ph {
@@ -55,7 +55,7 @@ html.scroll-mode #gdt {
   flex-direction: column;
   gap: 10px;
   content-visibility: auto;
-  contain-intrinsic-size: 100% 100vh;
+  contain-intrinsic-size: auto 100vh;
 }
 
 .r-ph.loading {

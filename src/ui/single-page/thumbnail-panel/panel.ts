@@ -28,6 +28,8 @@ export function createThumbnailPanel(
 
   let lastCenteredIndex = -1;
   let clickedFromPanel = false;
+  let lastContentSize = '';
+  let lastContentVertical: boolean | null = null;
   const itemPool: HTMLElement[] = [];
   const activeItems = new Map<number, HTMLElement>();
   let hideTimeout: ReturnType<typeof setTimeout>;
@@ -162,6 +164,7 @@ export function createThumbnailPanel(
           if (ctx) ctx.drawImage(img as HTMLImageElement, 0, 0, w, h);
         } else {
           const tempImg = new Image();
+          tempImg.decoding = 'async';
           tempImg.onload = () => {
             if (thumbCanvas!.dataset.src === thumbSrc) {
               let w = tempImg.naturalWidth;
@@ -237,12 +240,20 @@ export function createThumbnailPanel(
     const vp = vpSize();
     const itemSize = getItemSize();
 
-    if (isVertical()) {
-      content.style.width = '100%';
-      content.style.height = `${total * itemSize + 16}px`;
-    } else {
-      content.style.width = `${total * itemSize + 16}px`;
-      content.style.height = '100%';
+    // Only touch content size when it actually changes; rewriting it on every
+    // scroll event invalidates layout needlessly while scrubbing.
+    const wantSize = `${total * itemSize + 16}px`;
+    const vertical = isVertical();
+    if (lastContentSize !== wantSize || lastContentVertical !== vertical) {
+      if (vertical) {
+        content.style.width = '100%';
+        content.style.height = wantSize;
+      } else {
+        content.style.width = wantSize;
+        content.style.height = '100%';
+      }
+      lastContentSize = wantSize;
+      lastContentVertical = vertical;
     }
 
     const scrollOffset = getScrollOffset();
@@ -313,31 +324,37 @@ export function createThumbnailPanel(
   }
 
   let lastScrollPos = 0;
+  let scrollRafPending = false;
   viewport.addEventListener('scroll', () => {
-    renderVisibleItems();
-    
-    if (isProgrammaticScroll) {
-      isProgrammaticScroll = false;
-      if (programmaticScrollTimer) clearTimeout(programmaticScrollTimer);
-      lastScrollPos = getScrollOffset();
-      return;
-    }
+    if (scrollRafPending) return;
+    scrollRafPending = true;
+    requestAnimationFrame(() => {
+      scrollRafPending = false;
+      renderVisibleItems();
 
-    const currentScroll = getScrollOffset();
-    const isScrollingUp = currentScroll < lastScrollPos;
-    const isScrollingDown = currentScroll > lastScrollPos;
-    
-    if (onScrollToTop && currentScroll <= 5 && isScrollingUp) {
-      onScrollToTop();
-    } else if (onScrollToBottom && currentScroll >= maxOffset() - 5 && isScrollingDown) {
-      onScrollToBottom();
-    }
-    
-    lastScrollPos = currentScroll;
-    
-    openPanel(true);
-    clearTimeout(hideTimeout);
-    hideTimeout = setTimeout(() => openPanel(false), 500);
+      if (isProgrammaticScroll) {
+        isProgrammaticScroll = false;
+        if (programmaticScrollTimer) clearTimeout(programmaticScrollTimer);
+        lastScrollPos = getScrollOffset();
+        return;
+      }
+
+      const currentScroll = getScrollOffset();
+      const isScrollingUp = currentScroll < lastScrollPos;
+      const isScrollingDown = currentScroll > lastScrollPos;
+
+      if (onScrollToTop && currentScroll <= 5 && isScrollingUp) {
+        onScrollToTop();
+      } else if (onScrollToBottom && currentScroll >= maxOffset() - 5 && isScrollingDown) {
+        onScrollToBottom();
+      }
+
+      lastScrollPos = currentScroll;
+
+      openPanel(true);
+      clearTimeout(hideTimeout);
+      hideTimeout = setTimeout(() => openPanel(false), 500);
+    });
   }, { passive: true });
 
   thumbPanel.addEventListener('wheel', (e) => {
