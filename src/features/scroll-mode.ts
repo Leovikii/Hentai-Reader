@@ -34,23 +34,48 @@ function setErrorState(
 
 let lazyLoadObserver: IntersectionObserver | null = null;
 
-export async function prefetchImageUrl(url: string, nlToken?: string, force = false, priority = 0): Promise<{ src: string; nl?: string } | null> {
+// De-dupe concurrent resolves of the same URL. Multiple independent callers
+// (itemData for the current slide, directional prefetch, thumbnail-triggered
+// loads, scroll-mode lazy-load) used to each fire their own network request for
+// the same image, doubling load on the host. Now the first caller's in-flight
+// promise is shared; later callers await it instead of issuing a second fetch.
+const inFlight = new Map<string, Promise<{ src: string; nl?: string } | null>>();
+
+export function prefetchImageUrl(url: string, nlToken?: string, force = false, priority = 0): Promise<{ src: string; nl?: string } | null> {
   if (!force && store.resolvedUrls.has(url)) {
-    return { src: store.resolvedUrls.get(url)! };
+    return Promise.resolve({ src: store.resolvedUrls.get(url)! });
   }
   const adapter = store.activeAdapter;
-  if (!adapter) return null;
+  if (!adapter) return Promise.resolve(null);
 
-  try {
-    const res = await adapter.resolveImage(url, nlToken, priority);
-    if (res && res.src) {
-      store.resolvedUrls.set(url, res.src);
-      return res;
+  // A `force` retry (new nl token after a dead node) must issue a fresh request,
+  // never reuse a stale in-flight one. Non-force callers share the pending promise
+  // and, if a higher-priority caller arrives, nudge the limiter to run it sooner.
+  if (!force) {
+    const pending = inFlight.get(url);
+    if (pending) {
+      if (adapter.bumpPriority) adapter.bumpPriority(url);
+      return pending;
     }
-    return null;
-  } catch (err) {
-    return null;
   }
+
+  const task = (async () => {
+    try {
+      const res = await adapter.resolveImage(url, nlToken, priority);
+      if (res && res.src) {
+        store.resolvedUrls.set(url, res.src);
+        return res;
+      }
+      return null;
+    } catch (err) {
+      return null;
+    } finally {
+      inFlight.delete(url);
+    }
+  })();
+
+  inFlight.set(url, task);
+  return task;
 }
 
 export function loadPlaceholderImage(placeholder: HTMLElement) {
@@ -185,8 +210,6 @@ export function processBatch(links: PageLink[], pIndex: number, container?: HTML
                       document.body;
   }
 
-  const eagerLoad: HTMLElement[] = [];
-
   links.forEach((link, index) => {
     const url = link.url;
     const placeholder = document.createElement('div');
@@ -212,24 +235,14 @@ export function processBatch(links: PageLink[], pIndex: number, container?: HTML
     `;
     fragment.appendChild(placeholder);
 
+    // Scroll mode lazy-loads via the observer as placeholders scroll into view.
+    // Non-scroll mode shows images only through the reader (PhotoSwipe), which
+    // resolves the current slide + directional neighbours on demand, so these
+    // placeholders need no eager network work — that just bursts the limiter.
     if (store.settings.scrollMode) {
       lazyLoadObserver?.observe(placeholder);
-    } else {
-      placeholder.dataset.lazyLoaded = 'true';
-      eagerLoad.push(placeholder);
     }
   });
-
-  // Non-scroll mode eager-loads the whole batch up-front. When a prev page is
-  // prepended, the reader lands at the batch's tail (the image adjacent to where
-  // the user came from) and pages backward through it, so trigger loads tail-first
-  // — otherwise the FIFO limiter serves the head (which the user reaches last)
-  // first and the wanted tail image waits behind ~20 unwanted fetches. DOM/index
-  // order is untouched; only the fetch trigger order changes.
-  if (eagerLoad.length) {
-    const ordered = prepend ? eagerLoad.slice().reverse() : eagerLoad;
-    ordered.forEach(ph => loadPlaceholderImage(ph));
-  }
 
   batchDiv.appendChild(fragment);
   if (prepend && targetContainer.firstChild) {

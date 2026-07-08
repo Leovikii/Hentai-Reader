@@ -28,7 +28,8 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
   // Sync our `store.allImages` with the DOM placeholders
   function syncImages(): void {
     const freshImages = Array.from(qa('.r-img, .r-ph')) as HTMLElement[];
-    if (freshImages.length !== store.allImages.length || freshImages.some((img, i) => img !== store.allImages[i])) {
+    const changed = freshImages.length !== store.allImages.length || freshImages.some((img, i) => img !== store.allImages[i]);
+    if (changed) {
       store.allImages = freshImages;
       sidebar.update();
       if (pswp) {
@@ -249,7 +250,21 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
     pswp.on('destroy', () => {
       window.removeEventListener('sp-mobile-ui-interaction-start', cancelMobileUITimeout);
       window.removeEventListener('sp-mobile-ui-interaction-end', triggerMobileUITimeout);
+      window.removeEventListener('sp-image-loaded', handleImageLoaded);
     });
+
+    // A placeholder can be upgraded to a real <img> outside the overlay's own
+    // itemData chain (thumbnail-panel-triggered load, scroll-mode lazy-load). When
+    // that happens for a slide PhotoSwipe already built, refresh it so the resolved
+    // image shows instead of a stale empty/loading slide.
+    function handleImageLoaded(e: Event): void {
+      const customEvent = e as CustomEvent<{ index: number; element: HTMLElement }>;
+      const { index } = customEvent.detail;
+      if (pswp && index >= 0 && index < store.allImages.length) {
+        pswp.refreshSlideContent(index);
+      }
+    }
+    window.addEventListener('sp-image-loaded', handleImageLoaded);
 
     const fetchingState = new Map<string, 'resolving' | 'downloading'>();
     const tempImages = new Map<number, HTMLImageElement>(); // Keep track to abort
@@ -438,7 +453,7 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
              const pagesToJump = Math.trunc(scrollAccumulator / SCROLL_THRESHOLD);
              if (pagesToJump !== 0) {
                  let targetIndex = pswp!.currIndex + pagesToJump;
-                 
+
                  if (targetIndex < 0 && store.prevUrl && !store.isFetching) {
                      loadPrevPage();
                      scrollAccumulator = 0;
