@@ -145,11 +145,17 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
 
     store.currentImageIndex = startIndex;
     isActive = true;
-    
+
     document.documentElement.style.overflow = 'hidden';
     document.body.style.overflow = 'hidden';
-    
+
     store.emit('readerModeChanged');
+
+    // Force re-centering on the current image. Without this, lastCenteredIndex
+    // would persist from the previous session, and if we re-open at the same
+    // index, centerOnCurrent() gets skipped even though the panel's scroll
+    // position was reset to 0 when the DOM was detached/reattached.
+    sidebar.resetCentering();
 
     initPhotoSwipe(startIndex);
 

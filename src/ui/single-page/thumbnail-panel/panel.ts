@@ -566,6 +566,7 @@ export function createThumbnailPanel(
     update,
     openPanel,
     closePanel,
-    isActive: () => isPanelActive
+    isActive: () => isPanelActive,
+    resetCentering: () => { lastCenteredIndex = -1; }
   };
 }

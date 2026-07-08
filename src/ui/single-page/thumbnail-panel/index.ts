@@ -9,6 +9,7 @@ export interface SidebarHandle {
   wakeUpProgressBar: () => void;
   openPanel: (keepOpen?: boolean) => void;
   closePanel: () => void;
+  resetCentering: () => void;
 }
 
 export function createSidebar(
@@ -45,5 +46,6 @@ export function createSidebar(
     wakeUpProgressBar: progress.wakeUp,
     openPanel: panel.openPanel,
     closePanel: panel.closePanel,
+    resetCentering: panel.resetCentering,
   };
 }
