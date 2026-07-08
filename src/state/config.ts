@@ -3,12 +3,9 @@ import type { AppConfig, UserSettings } from '../types';
 
 export const CFG: AppConfig = {
   nextPage: '3000px 0px',
-  prefetchDistance: 5000,
   maxRetries: 3,
   retryDelay: 1000,
   maxConcurrent: 3,
-  requestSpacing: 100,
-  imageLoadTimeout: 8000,
 };
 
 export function loadSettings(adapterName?: string): UserSettings {

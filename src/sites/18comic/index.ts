@@ -34,7 +34,52 @@ class Mutex {
 }
 
 const decodeMutex = new Mutex(3);
+
+/**
+ * Cache of decoded/reassembled images, keyed by the viewer URL.
+ * Values are Promises resolving to the object-URL of the stitched JPEG.
+ *
+ * 18comic runs in scroll mode, which keeps every decoded <img> in the DOM so
+ * scroll-back is instant. That means a decoded blob may be referenced by a live
+ * DOM node AND by this cache at the same time — we must never revoke a blob that
+ * is still on screen, or the image goes blank.
+ *
+ * So the cap is deliberately generous (normal reading never evicts) and eviction
+ * only revokes a blob once we've confirmed no live element still points at it.
+ * This reclaims memory on marathon sessions without ever breaking a visible page.
+ */
 const imageCache = new Map<string, Promise<{ src: string }>>();
+const MAX_DECODED_CACHE = 80;
+
+/** Collect object-URLs currently referenced by on-screen elements. */
+function collectInUseSrcs(): Set<string> {
+  const inUse = new Set<string>();
+  document.querySelectorAll<HTMLElement>('.r-img').forEach(el => {
+    const real = el.dataset.realSrc || (el as HTMLImageElement).src;
+    if (real && real.startsWith('blob:')) inUse.add(real);
+  });
+  return inUse;
+}
+
+/** Evict oldest cache entries past the cap, revoking blobs no longer on screen. */
+async function trimImageCache(): Promise<void> {
+  if (imageCache.size <= MAX_DECODED_CACHE) return;
+  const inUse = collectInUseSrcs();
+  // Map preserves insertion order, so the first keys are the oldest.
+  for (const key of Array.from(imageCache.keys())) {
+    if (imageCache.size <= MAX_DECODED_CACHE) break;
+    const entry = imageCache.get(key)!;
+    imageCache.delete(key);
+    try {
+      const { src } = await entry;
+      if (src.startsWith('blob:') && !inUse.has(src)) {
+        URL.revokeObjectURL(src);
+      }
+    } catch {
+      // Failed decodes hold no blob; nothing to revoke.
+    }
+  }
+}
 
 export const Comic18Adapter: SiteAdapter = {
   name: '18comic',
@@ -210,6 +255,9 @@ export const Comic18Adapter: SiteAdapter = {
       })();
 
       imageCache.set(urlStr, p);
+      // After this decode lands, reclaim memory from long-past pages (never
+      // touches blobs still on screen). Fire-and-forget; failures are harmless.
+      p.then(() => trimImageCache()).catch(() => {});
       return p;
 
     } catch (err) {

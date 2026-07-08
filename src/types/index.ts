@@ -9,12 +9,9 @@ export interface UserSettings {
 
 export interface AppConfig {
   nextPage: string;
-  prefetchDistance: number;
   maxRetries: number;
   retryDelay: number;
   maxConcurrent: number;
-  requestSpacing: number;
-  imageLoadTimeout: number;
 }
 
 export interface SinglePageModeHandle {

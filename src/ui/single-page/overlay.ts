@@ -445,7 +445,7 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
         checkAndLoadNextPage();
         
         // Sync HUD with current slide state
-        const viewerUrl = store.allImages[pswp.currIndex]?.getAttribute('href');
+        const viewerUrl = store.allImages[pswp.currIndex]?.dataset.url || store.allImages[pswp.currIndex]?.dataset.viewerUrl;
         const state = viewerUrl ? fetchingState.get(viewerUrl) : undefined;
         if (state === 'resolving') {
            hud.show({ status: 'loading', text: i18n.resolvingImage });

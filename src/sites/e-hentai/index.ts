@@ -1,10 +1,20 @@
 import type { SiteAdapter, PageLink } from '../../types/site-adapter';
 import { q, qa } from '../../utils/dom';
-import { requestQueue } from '../../services/request-queue';
+import { ehLimiter } from '../../services/net-limiter';
 import { CFG } from '../../state/config';
 import { store } from '../../state/store';
 
 const parser = new DOMParser();
+
+/**
+ * All E-Hentai network requests funnel through `ehLimiter` so we never burst
+ * dozens of parallel connections at the server (the main abuse-detection
+ * trigger). Priority lets the image the user is currently waiting on jump ahead
+ * of bulk/prefetch work, keeping browsing snappy.
+ */
+function limitedFetch(url: string, priority = 0): Promise<Response> {
+  return ehLimiter.run(() => fetch(url), priority);
+}
 
 function getNextUrl(doc: Document) {
   const ptt = q('.ptt', doc);
@@ -102,9 +112,9 @@ export const EHentaiAdapter: SiteAdapter = {
     
     while (retries <= CFG.maxRetries) {
       try {
-        const response = await fetch(fetchUrl);
+        const response = await limitedFetch(fetchUrl);
         if (response.status === 429 || response.status === 503) {
-          requestQueue.pauseGlobally(5000);
+          ehLimiter.pauseFor(5000);
           throw { rateLimited: true };
         }
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -134,7 +144,9 @@ export const EHentaiAdapter: SiteAdapter = {
   },
 
   async fetchPage(url: string) {
-    const response = await fetch(url);
+    // Page HTML is user-blocking (nothing renders until it arrives), so give it
+    // priority over bulk image-node resolves to keep navigation snappy.
+    const response = await limitedFetch(url, 10);
     if (!response.ok) throw new Error('Failed to fetch page');
     const html = await response.text();
     const doc = parser.parseFromString(html, 'text/html');
