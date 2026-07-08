@@ -101,26 +101,55 @@ export function createFloatControl(spmHandle: SinglePageModeHandle): void {
 
   // Dragging logic
   let isDragging = false;
+  let activePointerId: number | null = null;
   let startY = 0;
   let startTop = 0;
   let dragMoved = false;
 
+  // Shared exit for pointerup/pointercancel. Only persist on a real drag-release
+  // (commit && dragMoved); a browser-stolen gesture cancels and a plain tap must
+  // not rewrite the saved position.
+  function endDrag(commit: boolean, e?: PointerEvent): void {
+    if (!isDragging) return;
+    isDragging = false;
+    floatControl.classList.remove('dragging');
+    if (activePointerId !== null) {
+      try { floatControl.releasePointerCapture(activePointerId); } catch (err) {}
+      activePointerId = null;
+    }
+
+    if (commit && dragMoved) {
+      const rect = floatControl.getBoundingClientRect();
+      const centerPercent = ((rect.top + rect.height / 2) / window.innerHeight) * 100;
+      const centerX = e ? e.clientX : rect.left + rect.width / 2;
+      const side = centerX < window.innerWidth / 2 ? 'left' : 'right';
+
+      floatControl.style.top = `${centerPercent}%`;
+
+      localStorage.setItem('hentai-reader-bookmark-pos', JSON.stringify({ side, topPercent: centerPercent }));
+    }
+  }
+
   floatControl.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
-    
+
     isDragging = true;
     dragMoved = false;
+    activePointerId = e.pointerId;
+    // Capture the pointer so we keep move/up even off the control, and stray
+    // page pointers (different id) can't drive it.
+    try { floatControl.setPointerCapture(e.pointerId); } catch (err) {}
     startY = e.clientY;
-    
+
     const rect = floatControl.getBoundingClientRect();
     startTop = rect.top + rect.height / 2;
 
     floatControl.classList.add('dragging');
   });
 
-  window.addEventListener('pointermove', (e) => {
-    if (!isDragging) return;
-    
+  floatControl.addEventListener('pointermove', (e) => {
+    if (!isDragging || e.pointerId !== activePointerId) return;
+
     const deltaY = e.clientY - startY;
     if (Math.abs(deltaY) > 5) {
       if (!dragMoved && settings.isOpen()) {
@@ -135,7 +164,7 @@ export function createFloatControl(spmHandle: SinglePageModeHandle): void {
     const clampedY = Math.max(minCenterY, Math.min(maxCenterY, newCenterY));
 
     floatControl.style.top = `${clampedY}px`;
-    
+
     if (e.clientX < window.innerWidth / 2) {
        floatControl.classList.remove('right-side');
        floatControl.classList.add('left-side');
@@ -145,18 +174,17 @@ export function createFloatControl(spmHandle: SinglePageModeHandle): void {
     }
   });
 
-  window.addEventListener('pointerup', (e) => {
-    if (!isDragging) return;
-    isDragging = false;
-    floatControl.classList.remove('dragging');
+  floatControl.addEventListener('pointerup', (e) => {
+    if (e.pointerId !== activePointerId) return;
+    endDrag(true, e);
+  });
 
-    const rect = floatControl.getBoundingClientRect();
-    const centerPercent = ((rect.top + rect.height / 2) / window.innerHeight) * 100;
-    const side = e.clientX < window.innerWidth / 2 ? 'left' : 'right';
-
-    floatControl.style.top = `${centerPercent}%`;
-
-    localStorage.setItem('hentai-reader-bookmark-pos', JSON.stringify({ side, topPercent: centerPercent }));
+  // A gesture the browser reclaims (address-bar open/close, edge-back, etc.)
+  // fires pointercancel instead of pointerup. Without this the drag state would
+  // stay stuck true and later page scrolls would drag the control around.
+  floatControl.addEventListener('pointercancel', (e) => {
+    if (e.pointerId !== activePointerId) return;
+    endDrag(false, e);
   });
   
   floatControl.addEventListener('click', (e) => {
