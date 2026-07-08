@@ -486,9 +486,15 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
         }
         if (store.autoPlay) {
            autoPlay.stop();
-           const content = pswp.currSlide?.content;
-           if (content && content.state === 'loaded') {
-             autoPlay.start();
+           // Reached the last image with no further page to load — stop instead
+           // of leaving the interval spinning on a no-op next().
+           if (pswp.currIndex >= store.allImages.length - 1 && !store.nextUrl) {
+             autoPlay.stopAtEnd();
+           } else {
+             const content = pswp.currSlide?.content;
+             if (content && content.state === 'loaded') {
+               autoPlay.start();
+             }
            }
         }
       }

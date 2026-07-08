@@ -34,13 +34,6 @@ function setErrorState(
 
 let lazyLoadObserver: IntersectionObserver | null = null;
 
-export function disconnectObservers() {
-  if (lazyLoadObserver) {
-    lazyLoadObserver.disconnect();
-    lazyLoadObserver = null;
-  }
-}
-
 export async function prefetchImageUrl(url: string, nlToken?: string, force = false, priority = 0): Promise<{ src: string; nl?: string } | null> {
   if (!force && store.resolvedUrls.has(url)) {
     return { src: store.resolvedUrls.get(url)! };
