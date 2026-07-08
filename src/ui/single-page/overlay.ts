@@ -330,7 +330,11 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
           if (pswp && pswp.currIndex === e.index) {
              hud.show({ status: 'loading', text: i18n.resolvingImage });
           }
-          prefetchImageUrl(viewerUrl).then(res => {
+          // The slide the user is looking at must resolve before its preloaded
+          // neighbors; closer to the current index = higher priority.
+          const distance = pswp ? Math.abs(e.index - pswp.currIndex) : 0;
+          const priority = 100 - distance;
+          prefetchImageUrl(viewerUrl, undefined, false, priority).then(res => {
             if (res && res.src) {
               fetchingState.set(viewerUrl, 'downloading');
               if (pswp && pswp.currIndex === e.index) {

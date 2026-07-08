@@ -41,7 +41,7 @@ export function disconnectObservers() {
   }
 }
 
-export async function prefetchImageUrl(url: string, nlToken?: string, force = false): Promise<{ src: string; nl?: string } | null> {
+export async function prefetchImageUrl(url: string, nlToken?: string, force = false, priority = 0): Promise<{ src: string; nl?: string } | null> {
   if (!force && store.resolvedUrls.has(url)) {
     return { src: store.resolvedUrls.get(url)! };
   }
@@ -49,7 +49,7 @@ export async function prefetchImageUrl(url: string, nlToken?: string, force = fa
   if (!adapter) return null;
 
   try {
-    const res = await adapter.resolveImage(url, nlToken);
+    const res = await adapter.resolveImage(url, nlToken, priority);
     if (res && res.src) {
       store.resolvedUrls.set(url, res.src);
       return res;
@@ -108,7 +108,7 @@ export function loadPlaceholderImage(placeholder: HTMLElement) {
             if (img.parentNode) img.parentNode.replaceChild(placeholder, img);
           }
 
-          prefetchImageUrl(url, currentNlToken, true).then(newRes => {
+          prefetchImageUrl(url, currentNlToken, true, 20).then(newRes => {
             if (newRes) {
               img.src = newRes.src;
               img.dataset.realSrc = newRes.src;

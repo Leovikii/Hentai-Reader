@@ -106,13 +106,15 @@ export const EHentaiAdapter: SiteAdapter = {
     };
   },
 
-  async resolveImage(url: string, nlToken?: string) {
+  // `priority` (optional 3rd arg, defaults to 0) lets the image the user is
+  // actively waiting on jump ahead of bulk/background resolves in the limiter.
+  async resolveImage(url: string, nlToken?: string, priority = 0) {
     const fetchUrl = nlToken ? `${url}${url.includes('?') ? '&' : '?'}nl=${nlToken}` : url;
     let retries = 0;
-    
+
     while (retries <= CFG.maxRetries) {
       try {
-        const response = await limitedFetch(fetchUrl);
+        const response = await limitedFetch(fetchUrl, priority);
         if (response.status === 429 || response.status === 503) {
           ehLimiter.pauseFor(5000);
           throw { rateLimited: true };
@@ -123,7 +125,7 @@ export const EHentaiAdapter: SiteAdapter = {
         const imgEl = q('#img', doc) as HTMLImageElement | null;
         const imgSrc = imgEl?.src;
         if (!imgSrc) throw new Error('Image not found');
-        
+
         const onerror = imgEl.getAttribute('onerror') || '';
         const m = onerror.match(/nl\(['"]([^'"]+)['"]\)/);
         const nextNlToken = m ? m[1] : null;
@@ -132,7 +134,11 @@ export const EHentaiAdapter: SiteAdapter = {
       } catch (err) {
         if (retries < CFG.maxRetries) {
           const isRateLimited = err && typeof err === 'object' && 'rateLimited' in err;
-          const delay = isRateLimited ? 5000 : CFG.retryDelay * Math.pow(2, retries);
+          // On rate-limit the shared limiter already holds every request for 5s
+          // (pauseFor above), so we only need a short local nudge here — stacking
+          // another full 5s would double the recovery time for no benefit. The
+          // re-fetch below still can't run until the limiter's cooldown expires.
+          const delay = isRateLimited ? 500 : CFG.retryDelay * Math.pow(2, retries);
           await new Promise(resolve => setTimeout(resolve, delay));
           retries++;
         } else {
