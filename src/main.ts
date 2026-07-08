@@ -66,7 +66,7 @@ import { initViewportScale } from './utils/viewport';
 
   // Auto enter reader mode
   if (store.settings.autoEnterSinglePage) {
-    setTimeout(() => spmHandle.open(), 1000);
+    setTimeout(() => spmHandle.open(0), 1000);
   }
 
   // Native click to enter reader mode
