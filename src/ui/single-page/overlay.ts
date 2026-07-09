@@ -306,6 +306,57 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
 
     const fetchingState = new Map<string, 'resolving' | 'downloading'>();
 
+    // PhotoSwipe drives the *displayed* <img>, which has its own load lifecycle
+    // independent of our resolve/probe chain. Once resolve completes we clear
+    // fetchingState, but PhotoSwipe's own byte download (the big WebP) is still in
+    // flight — the slide paints half-drawn or black meanwhile. byteState tracks
+    // that real load state so both the HUD and the wheel speed-bump reflect what's
+    // actually on screen, not just our upstream resolve. Keyed by viewer URL.
+    const byteState = new Map<string, 'loading' | 'loaded' | 'error'>();
+
+    const urlForContent = (content: any): string | undefined => {
+      const idx = content?.index;
+      const el = idx != null ? store.allImages[idx] : undefined;
+      return el ? (el.dataset.url || el.dataset.viewerUrl) : undefined;
+    };
+
+    // Single source of truth for the HUD: resolve phase (fetchingState) → byte
+    // phase (byteState / PhotoSwipe content state) → done. Error is persistent
+    // (no auto-hide) until the user navigates away or a retry succeeds.
+    function refreshHudForCurrent(): void {
+      if (!pswp) return;
+      const el = store.allImages[pswp.currIndex];
+      const url = el?.dataset.url || el?.dataset.viewerUrl;
+      if (!url) { hud.hide(); return; }
+
+      if (byteState.get(url) === 'error') {
+        hud.show({ status: 'error', text: i18n.loadFailed });
+        return;
+      }
+      if (fetchingState.get(url) === 'resolving') {
+        hud.show({ status: 'loading', text: i18n.resolvingImage });
+        return;
+      }
+      const painted = pswp.currSlide?.content?.state === 'loaded' || byteState.get(url) === 'loaded';
+      if (painted) { hud.hide(); return; }
+      hud.show({ status: 'loading', text: i18n.downloading });
+    }
+
+    // Mirror PhotoSwipe's own image load lifecycle into byteState.
+    pswp.on('contentLoadImage', (e: any) => {
+      const url = urlForContent(e.content);
+      if (url && byteState.get(url) !== 'loaded') byteState.set(url, 'loading');
+    });
+    pswp.on('loadComplete', (e: any) => {
+      const url = urlForContent(e.content);
+      if (!url) return;
+      byteState.set(url, e.isError ? 'error' : 'loaded');
+      if (pswp && store.allImages[pswp.currIndex] &&
+          (store.allImages[pswp.currIndex].dataset.url || store.allImages[pswp.currIndex].dataset.viewerUrl) === url) {
+        refreshHudForCurrent();
+      }
+    });
+
     pswp.on('numItems', (e) => {
       e.numItems = store.allImages.length;
     });
@@ -402,9 +453,7 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
         // only loader). If the waterfall's <img> is already loading, trust its chain.
         if (!isWaterfallImage && !fetchingState.has(viewerUrl) && viewerUrl) {
           fetchingState.set(viewerUrl, 'resolving');
-          if (pswp && pswp.currIndex === e.index) {
-             hud.show({ status: 'loading', text: i18n.resolvingImage });
-          }
+          if (pswp && pswp.currIndex === e.index) refreshHudForCurrent();
           // The slide the user is looking at must resolve before its preloaded
           // neighbors; closer to the current index = higher priority.
           const distance = pswp ? Math.abs(e.index - pswp.currIndex) : 0;
@@ -418,30 +467,27 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
           resolveImageWithRetry(viewerUrl, { priority }).then(res => {
             if (!myPswp || myPswp !== pswp) { fetchingState.delete(viewerUrl); return; }
             if (res && res.src) {
-              fetchingState.set(viewerUrl, 'downloading');
-              if (myPswp.currIndex === findLive()) {
-                 hud.show({ status: 'loading', text: i18n.downloading });
-              }
+              fetchingState.delete(viewerUrl);
+              // Resolve done; PhotoSwipe's own <img> now downloads the bytes.
+              // byteState + contentLoadImage/loadComplete drive the HUD from here.
+              byteState.set(viewerUrl, 'loading');
+              if (myPswp.currIndex === findLive()) refreshHudForCurrent();
 
               const failHud = () => {
-                fetchingState.delete(viewerUrl);
                 if (!myPswp || myPswp !== pswp) return;
-                const idx = findLive();
-                if (idx !== -1 && myPswp.currIndex === idx) {
-                  hud.show({ status: 'error', text: i18n.loadFailed });
-                  setTimeout(() => hud.hide(), 3000);
-                }
+                byteState.set(viewerUrl, 'error');
+                if (myPswp.currIndex === findLive()) refreshHudForCurrent();
               };
 
               const img = new Image();
               img.decoding = 'async';
               img.onload = () => {
                 store.imageDimensions.set(viewerUrl, { w: img.naturalWidth, h: img.naturalHeight });
-                fetchingState.delete(viewerUrl);
                 if (!myPswp || myPswp !== pswp) return;
                 const idx = findLive();
                 if (idx === -1) return;
-                if (myPswp.currIndex === idx) hud.hide();
+                byteState.set(viewerUrl, 'loaded');
+                if (myPswp.currIndex === idx) refreshHudForCurrent();
                 myPswp.refreshSlideContent(idx);
                 if (myPswp.currIndex === idx && store.autoPlay) {
                   autoPlay.start();
@@ -454,21 +500,24 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
                 nl: res.nl,
                 priority,
                 shouldContinue: () => myPswp === pswp,
+                onRetry: () => {
+                  if (!myPswp || myPswp !== pswp) return;
+                  byteState.set(viewerUrl, 'loading');
+                  if (myPswp.currIndex === findLive()) refreshHudForCurrent();
+                },
                 onFail: failHud,
               });
               img.src = res.src;
             } else {
               fetchingState.delete(viewerUrl);
-              if (myPswp && myPswp === pswp && myPswp.currIndex === findLive()) hud.hide();
+              byteState.set(viewerUrl, 'error');
+              if (myPswp && myPswp === pswp && myPswp.currIndex === findLive()) refreshHudForCurrent();
             }
           }).catch(() => {
              fetchingState.delete(viewerUrl);
              if (!myPswp || myPswp !== pswp) return;
-             const idx = findLive();
-             if (idx !== -1 && myPswp.currIndex === idx) {
-                hud.show({ status: 'error', text: i18n.resolveImageFailed });
-                setTimeout(() => hud.hide(), 3000);
-             }
+             byteState.set(viewerUrl, 'error');
+             if (myPswp.currIndex === findLive()) refreshHudForCurrent();
           });
         }
       }
@@ -480,8 +529,20 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
       isPageLoading: (index) => {
         const el = store.allImages[index];
         const url = el?.dataset.url || el?.dataset.viewerUrl;
-        return index >= 0 && index < store.allImages.length && !!url
-          && (fetchingState.has(url) || !store.resolvedUrls.has(url));
+        if (!url || index < 0 || index >= store.allImages.length) return false;
+
+        // Terminal states: loaded or failed images aren't "loading" (speed bump should pass).
+        const bs = byteState.get(url);
+        if (bs === 'loaded' || bs === 'error') return false;
+
+        // Still in our resolve phase, or not resolved yet: definitely loading.
+        if (fetchingState.has(url) || !store.resolvedUrls.has(url)) return true;
+
+        // Resolved but PhotoSwipe hasn't confirmed byte completion: check its content state.
+        // Slides beyond preload range have no content yet, conservatively treat as loading.
+        const p = pswp as any;
+        const slide = p?.slides?.[index] || p?.getSlideByIndex?.(index);
+        return !slide?.content || slide.content.state !== 'loaded';
       },
       onEdgeForward: () => { if (store.nextUrl && !store.isFetching) loadNextPage(); },
       onEdgeBackward: () => { if (store.prevUrl && !store.isFetching) loadPrevPage(); },
@@ -497,17 +558,8 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
         store.currentImageIndex = pswp.currIndex;
         sidebar.update();
         checkAndLoadNextPage();
-        
-        // Sync HUD with current slide state
-        const viewerUrl = store.allImages[pswp.currIndex]?.dataset.url || store.allImages[pswp.currIndex]?.dataset.viewerUrl;
-        const state = viewerUrl ? fetchingState.get(viewerUrl) : undefined;
-        if (state === 'resolving') {
-           hud.show({ status: 'loading', text: i18n.resolvingImage });
-        } else if (state === 'downloading') {
-           hud.show({ status: 'loading', text: i18n.downloading });
-        } else {
-           hud.hide();
-        }
+
+        refreshHudForCurrent();
 
         // Track navigation
         if (lastNavigatedIndex !== -1 && lastNavigatedIndex !== pswp.currIndex) {

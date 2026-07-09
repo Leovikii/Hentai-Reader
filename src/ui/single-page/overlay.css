@@ -488,3 +488,9 @@
   border-left: 1px solid rgba(255, 255, 255, 0.2);
   user-select: none;
 }
+
+/* Suppress PhotoSwipe native error message */
+.pswp__error-msg-container,
+.pswp__error-msg {
+  display: none !important;
+}
