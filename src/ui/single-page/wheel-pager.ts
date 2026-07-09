@@ -7,27 +7,15 @@
  */
 
 export interface WheelPagerConfig {
-  /** Returns the active PhotoSwipe instance (or null if destroyed). */
   getPswp: () => any;
-
-  /** Check if a specific index is still loading. */
   isPageLoading: (index: number) => boolean;
-
-  /** Called when scrolling forward past the last image. */
   onEdgeForward: () => void;
-
-  /** Called when scrolling backward before the first image. */
   onEdgeBackward: () => void;
-
-  /** Get the total number of images. */
   getImageCount: () => number;
 }
 
 export interface WheelPager {
-  /** Attach to PhotoSwipe's wheel event. */
   onWheel: (e: any) => void;
-
-  /** Stop the ticker and reset velocity. */
   stop: () => void;
 }
 
@@ -36,12 +24,16 @@ const MIN_VELOCITY = 20;         // dead zone: below this the ticker stops
 const MAX_VELOCITY = 150;        // velocity reaching the fastest cadence (measured: a quick wheel spin peaks ~150)
 const TURN_INTERVAL_SLOW = 150;  // ms/turn at MIN_VELOCITY (a single wheel notch)
 const TURN_INTERVAL_FAST = 50;   // ms/turn at MAX_VELOCITY
-const SCROLL_BUMP_MULTIPLIER = 2.5; // interval ×N while the next page is still loading
+const GESTURE_GAP = 150;         // ms between wheel events that starts a new gesture
 
 export function createWheelPager(config: WheelPagerConfig): WheelPager {
   let wheelVelocity = 0;
   let scrollRafId: number | null = null;
   let lastTurnTime = 0;
+  // Loading-frontier latch: set when a gesture reaches a still-loading image,
+  // cleared only by a new gesture (see onWheel). While set, no turns fire.
+  let gestureConsumed = false;
+  let lastWheelTime = 0;
 
   function stop(): void {
     if (scrollRafId !== null) {
@@ -67,16 +59,17 @@ export function createWheelPager(config: WheelPagerConfig): WheelPager {
     }
 
     const dir = wheelVelocity > 0 ? 1 : -1;
+
+    // Latched at the loading frontier: keep decaying velocity but turn nothing.
+    if (gestureConsumed) {
+      scrollRafId = requestAnimationFrame(scrollTick);
+      return;
+    }
+
     const v = Math.min(MAX_VELOCITY, Math.abs(wheelVelocity));
     // sqrt easing: low velocity ramps to a fast cadence quickly so paging stays responsive.
     const t = Math.sqrt((v - MIN_VELOCITY) / (MAX_VELOCITY - MIN_VELOCITY));
-    let interval = TURN_INTERVAL_SLOW + t * (TURN_INTERVAL_FAST - TURN_INTERVAL_SLOW);
-
-    // Speed bump: slow the cadence hard when stepping into a still-loading page.
-    const nextIdx = pswp.currIndex + dir;
-    if (config.isPageLoading(nextIdx)) {
-      interval *= SCROLL_BUMP_MULTIPLIER;
-    }
+    const interval = TURN_INTERVAL_SLOW + t * (TURN_INTERVAL_FAST - TURN_INTERVAL_SLOW);
 
     if (now - lastTurnTime >= interval) {
       const target = pswp.currIndex + dir;
@@ -94,6 +87,12 @@ export function createWheelPager(config: WheelPagerConfig): WheelPager {
       if (pswp.mainScroll && pswp.mainScroll.stop) pswp.mainScroll.stop();
       pswp.goTo(target);
       lastTurnTime = now;
+
+      // Landed on a still-loading image: latch so one gesture advances only to
+      // the frontier, not past it. User must lift off and scroll again.
+      if (config.isPageLoading(target)) {
+        gestureConsumed = true;
+      }
     }
 
     scrollRafId = requestAnimationFrame(scrollTick);
@@ -115,6 +114,14 @@ export function createWheelPager(config: WheelPagerConfig): WheelPager {
     let delta = event.deltaY;
     if (event.deltaMode === 1) delta *= 33;
     else if (event.deltaMode === 2) delta *= window.innerHeight;
+
+    // A gap since the last event marks a new gesture: clear the latch. Continuous
+    // cranking stays under GESTURE_GAP, so the latch holds and blocks coasting through.
+    const now = event.timeStamp;
+    if (now - lastWheelTime > GESTURE_GAP) {
+      gestureConsumed = false;
+    }
+    lastWheelTime = now;
 
     // Reversing direction cancels built-up velocity so a back-flick turns at once.
     if (Math.sign(delta) !== Math.sign(wheelVelocity) && wheelVelocity !== 0) {
