@@ -7,6 +7,7 @@ import type { PageLink } from '../../types/site-adapter';
 import { qa } from '../../utils/dom';
 import { prefetchImageUrl } from '../../features/scroll-mode';
 import { createSidebar } from './thumbnail-panel';
+import { createWheelPager } from './wheel-pager';
 import { createAutoPlay } from './auto-play';
 import { createStatusHUD } from '../components/status-hud';
 import { i18n } from '../../utils/i18n';
@@ -425,98 +426,20 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
       }
     });
 
-    // Velocity-driven paging: each wheel event feeds a signed velocity that a per-frame
-    // ticker decays and converts into single-page turns (goTo ±1 only). Velocity is
-    // topped up only while the wheel moves, so paging halts a few frames after lift-off.
-    let wheelVelocity = 0;
-    let scrollRafId: number | null = null;
-    let lastTurnTime = 0;
-    const WHEEL_DECAY = 0.82;        // per-frame decay; ~100ms to halt after lift-off
-    const MIN_VELOCITY = 20;         // dead zone: below this the ticker stops
-    const MAX_VELOCITY = 150;        // velocity reaching the fastest cadence (measured: a quick wheel spin peaks ~150)
-    const TURN_INTERVAL_SLOW = 150;  // ms/turn at MIN_VELOCITY (a single wheel notch)
-    const TURN_INTERVAL_FAST = 50;   // ms/turn at MAX_VELOCITY
-    const SCROLL_BUMP_MULTIPLIER = 2.5; // interval ×N while the next page is still loading
-
-    function stopScrollTicker(): void {
-      if (scrollRafId !== null) { cancelAnimationFrame(scrollRafId); scrollRafId = null; }
-      wheelVelocity = 0;
-    }
-
-    function scrollTick(now: number): void {
-      scrollRafId = null;
-      if (!pswp) { wheelVelocity = 0; return; }
-
-      // Decay every frame; only live scrolling replenishes it, so paging halts on lift-off.
-      wheelVelocity *= WHEEL_DECAY;
-      if (Math.abs(wheelVelocity) < MIN_VELOCITY) { wheelVelocity = 0; return; }
-
-      const dir = wheelVelocity > 0 ? 1 : -1;
-      const v = Math.min(MAX_VELOCITY, Math.abs(wheelVelocity));
-      // sqrt easing: low velocity ramps to a fast cadence quickly so paging stays responsive.
-      const t = Math.sqrt((v - MIN_VELOCITY) / (MAX_VELOCITY - MIN_VELOCITY));
-      let interval = TURN_INTERVAL_SLOW + t * (TURN_INTERVAL_FAST - TURN_INTERVAL_SLOW);
-
-      // Speed bump: slow the cadence hard when stepping into a still-loading page.
-      const nextIdx = pswp.currIndex + dir;
-      const nextEl = store.allImages[nextIdx];
-      const nextUrl = nextEl?.dataset.url || nextEl?.dataset.viewerUrl;
-      const nextLoading = nextIdx >= 0 && nextIdx < store.allImages.length && !!nextUrl
-        && (fetchingState.has(nextUrl) || !store.resolvedUrls.has(nextUrl));
-      if (nextLoading) interval *= SCROLL_BUMP_MULTIPLIER;
-
-      if (now - lastTurnTime >= interval) {
-        const target = pswp.currIndex + dir;
-        if (target < 0) {
-          stopScrollTicker();
-          if (store.prevUrl && !store.isFetching) loadPrevPage();
-          return;
-        }
-        if (target >= store.allImages.length) {
-          stopScrollTicker();
-          if (store.nextUrl && !store.isFetching) loadNextPage();
-          return;
-        }
-        // @ts-ignore
-        if (pswp.mainScroll && pswp.mainScroll.stop) pswp.mainScroll.stop();
-        pswp.goTo(target);
-        lastTurnTime = now;
-      }
-
-      scrollRafId = requestAnimationFrame(scrollTick);
-    }
-
-    pswp.on('destroy', () => {
-      stopScrollTicker();
+    const wheelPager = createWheelPager({
+      getPswp: () => pswp,
+      getImageCount: () => store.allImages.length,
+      isPageLoading: (index) => {
+        const el = store.allImages[index];
+        const url = el?.dataset.url || el?.dataset.viewerUrl;
+        return index >= 0 && index < store.allImages.length && !!url
+          && (fetchingState.has(url) || !store.resolvedUrls.has(url));
+      },
+      onEdgeForward: () => { if (store.nextUrl && !store.isFetching) loadNextPage(); },
+      onEdgeBackward: () => { if (store.prevUrl && !store.isFetching) loadPrevPage(); },
     });
-
-    pswp.on('wheel', (e) => {
-      const slide = pswp?.currSlide;
-      if (!slide) return;
-
-      // Zoomed in: let PhotoSwipe pan natively.
-      if (slide.currZoomLevel > slide.zoomLevels.initial) {
-        return;
-      }
-
-      e.preventDefault();
-
-      const event = e.originalEvent as WheelEvent;
-      let delta = event.deltaY;
-      if (event.deltaMode === 1) delta *= 33;
-      else if (event.deltaMode === 2) delta *= window.innerHeight;
-
-      // Reversing direction cancels built-up velocity so a back-flick turns at once.
-      if (Math.sign(delta) !== Math.sign(wheelVelocity) && wheelVelocity !== 0) {
-        wheelVelocity = 0;
-      }
-
-      wheelVelocity = Math.max(-MAX_VELOCITY, Math.min(MAX_VELOCITY, wheelVelocity + delta));
-
-      if (scrollRafId === null) {
-        scrollRafId = requestAnimationFrame(scrollTick);
-      }
-    });
+    pswp.on('destroy', () => wheelPager.stop());
+    pswp.on('wheel', (e) => wheelPager.onWheel(e));
 
     pswp.on('change', () => {
       if (isReinitializing) {
