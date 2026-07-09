@@ -425,67 +425,96 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
       }
     });
 
-    let scrollAccumulator = 0;
-    let scrollDecayTimeout: ReturnType<typeof setTimeout> | null = null;
-    let scrollBatchTimeout: ReturnType<typeof setTimeout> | null = null;
-    const SCROLL_THRESHOLD = 80;
+    // Velocity-driven paging: each wheel event feeds a signed velocity that a per-frame
+    // ticker decays and converts into single-page turns (goTo ±1 only). Velocity is
+    // topped up only while the wheel moves, so paging halts a few frames after lift-off.
+    let wheelVelocity = 0;
+    let scrollRafId: number | null = null;
+    let lastTurnTime = 0;
+    const WHEEL_DECAY = 0.82;        // per-frame decay; ~100ms to halt after lift-off
+    const MIN_VELOCITY = 20;         // dead zone: below this the ticker stops
+    const MAX_VELOCITY = 150;        // velocity reaching the fastest cadence (measured: a quick wheel spin peaks ~150)
+    const TURN_INTERVAL_SLOW = 150;  // ms/turn at MIN_VELOCITY (a single wheel notch)
+    const TURN_INTERVAL_FAST = 50;   // ms/turn at MAX_VELOCITY
+    const SCROLL_BUMP_MULTIPLIER = 2.5; // interval ×N while the next page is still loading
+
+    function stopScrollTicker(): void {
+      if (scrollRafId !== null) { cancelAnimationFrame(scrollRafId); scrollRafId = null; }
+      wheelVelocity = 0;
+    }
+
+    function scrollTick(now: number): void {
+      scrollRafId = null;
+      if (!pswp) { wheelVelocity = 0; return; }
+
+      // Decay every frame; only live scrolling replenishes it, so paging halts on lift-off.
+      wheelVelocity *= WHEEL_DECAY;
+      if (Math.abs(wheelVelocity) < MIN_VELOCITY) { wheelVelocity = 0; return; }
+
+      const dir = wheelVelocity > 0 ? 1 : -1;
+      const v = Math.min(MAX_VELOCITY, Math.abs(wheelVelocity));
+      // sqrt easing: low velocity ramps to a fast cadence quickly so paging stays responsive.
+      const t = Math.sqrt((v - MIN_VELOCITY) / (MAX_VELOCITY - MIN_VELOCITY));
+      let interval = TURN_INTERVAL_SLOW + t * (TURN_INTERVAL_FAST - TURN_INTERVAL_SLOW);
+
+      // Speed bump: slow the cadence hard when stepping into a still-loading page.
+      const nextIdx = pswp.currIndex + dir;
+      const nextEl = store.allImages[nextIdx];
+      const nextUrl = nextEl?.dataset.url || nextEl?.dataset.viewerUrl;
+      const nextLoading = nextIdx >= 0 && nextIdx < store.allImages.length && !!nextUrl
+        && (fetchingState.has(nextUrl) || !store.resolvedUrls.has(nextUrl));
+      if (nextLoading) interval *= SCROLL_BUMP_MULTIPLIER;
+
+      if (now - lastTurnTime >= interval) {
+        const target = pswp.currIndex + dir;
+        if (target < 0) {
+          stopScrollTicker();
+          if (store.prevUrl && !store.isFetching) loadPrevPage();
+          return;
+        }
+        if (target >= store.allImages.length) {
+          stopScrollTicker();
+          if (store.nextUrl && !store.isFetching) loadNextPage();
+          return;
+        }
+        // @ts-ignore
+        if (pswp.mainScroll && pswp.mainScroll.stop) pswp.mainScroll.stop();
+        pswp.goTo(target);
+        lastTurnTime = now;
+      }
+
+      scrollRafId = requestAnimationFrame(scrollTick);
+    }
+
+    pswp.on('destroy', () => {
+      stopScrollTicker();
+    });
 
     pswp.on('wheel', (e) => {
       const slide = pswp?.currSlide;
       if (!slide) return;
-      
-      // If the image is zoomed in (larger than 'initial'), let PhotoSwipe handle the panning natively.
+
+      // Zoomed in: let PhotoSwipe pan natively.
       if (slide.currZoomLevel > slide.zoomLevels.initial) {
         return;
       }
 
-      // Otherwise, intercept wheel to switch pages
       e.preventDefault();
-      
+
       const event = e.originalEvent as WheelEvent;
       let delta = event.deltaY;
       if (event.deltaMode === 1) delta *= 33;
       else if (event.deltaMode === 2) delta *= window.innerHeight;
 
-      // Reset accumulator if scrolling direction changes
-      if (Math.sign(delta) !== Math.sign(scrollAccumulator) && scrollAccumulator !== 0) {
-        scrollAccumulator = 0;
+      // Reversing direction cancels built-up velocity so a back-flick turns at once.
+      if (Math.sign(delta) !== Math.sign(wheelVelocity) && wheelVelocity !== 0) {
+        wheelVelocity = 0;
       }
 
-      scrollAccumulator += delta;
+      wheelVelocity = Math.max(-MAX_VELOCITY, Math.min(MAX_VELOCITY, wheelVelocity + delta));
 
-      // Decay accumulator if user stops scrolling
-      if (scrollDecayTimeout) clearTimeout(scrollDecayTimeout);
-      scrollDecayTimeout = setTimeout(() => { scrollAccumulator = 0; }, 200);
-
-      // Batch rapid scroll events to calculate the jump distance
-      if (Math.abs(scrollAccumulator) >= SCROLL_THRESHOLD && !scrollBatchTimeout) {
-         scrollBatchTimeout = setTimeout(() => {
-             const pagesToJump = Math.trunc(scrollAccumulator / SCROLL_THRESHOLD);
-             if (pagesToJump !== 0) {
-                 let targetIndex = pswp!.currIndex + pagesToJump;
-
-                 if (targetIndex < 0 && store.prevUrl && !store.isFetching) {
-                     loadPrevPage();
-                     scrollAccumulator = 0;
-                 } else if (targetIndex >= store.allImages.length && store.nextUrl && !store.isFetching) {
-                     loadNextPage();
-                     scrollAccumulator = 0;
-                 } else {
-                     targetIndex = Math.max(0, Math.min(store.allImages.length - 1, targetIndex));
-                     if (targetIndex !== pswp!.currIndex) {
-                         // @ts-ignore
-                         if (pswp!.mainScroll && pswp!.mainScroll.stop) pswp!.mainScroll.stop();
-                         pswp!.goTo(targetIndex);
-                     }
-                     scrollAccumulator -= pagesToJump * SCROLL_THRESHOLD;
-                     if (Math.abs(scrollAccumulator) > SCROLL_THRESHOLD) {
-                         scrollAccumulator = Math.sign(scrollAccumulator) * (SCROLL_THRESHOLD - 1);
-                     }
-                 }
-             }
-             scrollBatchTimeout = null;
-         }, 50); // 50ms batching window perfectly captures fast wheel flicks
+      if (scrollRafId === null) {
+        scrollRafId = requestAnimationFrame(scrollTick);
       }
     });
 
