@@ -36,15 +36,8 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
       store.allImages = freshImages;
       sidebar.update();
       if (pswp) {
-        // PhotoSwipe keeps only 3 live holders (prev/current/next). When we were on
-        // the last image of a page, the "next" holder was pre-built for an index that
-        // was still out of bounds, so its slide stayed undefined. After a page load
-        // grows the count that index becomes valid, but the stale empty holder is
-        // never rebuilt on its own — goTo(newIndex) then moves that empty holder into
-        // the current slot, leaving currSlide undefined and freezing the wheel handler.
-        // refreshSlideContent rebuilds a specific holder by index, so refresh the
-        // current slide plus its immediate neighbours to repopulate any empty holder
-        // the count change just made reachable.
+        // Rebuild current + neighbour holders: a page-count growth can leave a
+        // pre-built empty holder that goTo would otherwise slide in as undefined.
         const c = pswp.currIndex;
         for (let i = c - 1; i <= c + 1; i++) {
           if (i >= 0 && i < store.allImages.length) pswp.refreshSlideContent(i);
@@ -119,14 +112,10 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
     autoPlay.reset();
   }, () => loadNextPage(), () => loadPrevPage());
 
-  // Assemblage handled in uiRegister for PhotoSwipe
-
-  // We will append sidebar elements to PhotoSwipe once it initializes
-
   function open(startIdx?: number): void {
     // Guard against a second open() while already active (e.g. the
-    // autoEnterSinglePage timer firing after a manual open) — without this a
-    // new PhotoSwipe is built over the live one, orphaning the first instance.
+    // autoEnterSinglePage timer firing after a manual open) — a second PhotoSwipe
+    // built over the live one would orphan the first instance.
     if (isActive) return;
 
     store.allImages = Array.from(qa('.r-img, .r-ph')) as HTMLElement[];
@@ -172,24 +161,16 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
 
     store.emit('readerModeChanged');
 
-    // Explicitly pause the scroll-mode lazy-load observer so it doesn't race with
-    // the reader's prefetch strategy. (overflow:hidden freezes the viewport so
-    // intersections stop firing anyway, but relying on that side-effect is fragile.)
-    // Only meaningful in scroll mode — non-scroll placeholders are never observed.
     if (store.settings.scrollMode) {
       pauseLazyLoad();
-      // Hide the underlying waterfall so the scroll-to-top that happens as the
-      // reader opens can't flash the first images behind the overlay for a frame
-      // (most visible on 18comic, which is force-scroll). Set synchronously so the
-      // next paint already has it hidden. Geometry is preserved (visibility, not
-      // display) for the close() scrollIntoView.
+      // Hide the waterfall during reader open so the scroll-to-top can't flash first
+      // images behind the overlay (visible on 18comic). Visibility (not display)
+      // preserves geometry for the close() scrollIntoView.
       document.documentElement.classList.add('hr-reader-open');
     }
 
-    // Force re-centering on the current image. Without this, lastCenteredIndex
-    // would persist from the previous session, and if we re-open at the same
-    // index, centerOnCurrent() gets skipped even though the panel's scroll
-    // position was reset to 0 when the DOM was detached/reattached.
+    // Re-open at the same index would skip centering (lastCenteredIndex persists),
+    // but the panel's scroll was reset on DOM detach — force it.
     sidebar.resetCentering();
 
     initPhotoSwipe(startIndex);
@@ -320,26 +301,38 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
       return el ? (el.dataset.url || el.dataset.viewerUrl) : undefined;
     };
 
-    // Single source of truth for the HUD: resolve phase (fetchingState) → byte
-    // phase (byteState / PhotoSwipe content state) → done. Error is persistent
-    // (no auto-hide) until the user navigates away or a retry succeeds.
+    // Single source of truth for an image's load progress, derived from the same
+    // state both consumers used to inspect independently: our resolve tracker
+    // (fetchingState), PhotoSwipe's byte-load lifecycle (byteState), and its slide
+    // content state. Two thin consumers read this instead of each re-deriving the
+    // phase: refreshHudForCurrent maps it to HUD text; isPageLoading maps it to the
+    // wheel speed-bump boolean. Add a phase here and both update in lockstep.
+    type ImagePhase = 'resolving' | 'downloading' | 'loaded' | 'error';
+    function imagePhase(url: string, index: number): ImagePhase {
+      if (byteState.get(url) === 'error') return 'error';
+      // Still waiting on the resolve step (adapter.resolveImage), before any bytes.
+      if (fetchingState.get(url) === 'resolving') return 'resolving';
+      // Resolved: gauge the *displayed* <img> — PhotoSwipe's own content state is
+      // authoritative once it has a slide for this index; byteState covers the
+      // reader's own probe load. Either reaching 'loaded' means it's painted.
+      const slide = (pswp as any)?.slides?.[index] ?? (pswp as any)?.getSlideByIndex?.(index);
+      if (byteState.get(url) === 'loaded' || slide?.content?.state === 'loaded') return 'loaded';
+      return 'downloading';
+    }
+
+    // Error HUD is persistent (no auto-hide) until the user navigates away or a
+    // retry succeeds — a re-derivation on 'change'/loadComplete clears it.
     function refreshHudForCurrent(): void {
       if (!pswp) return;
       const el = store.allImages[pswp.currIndex];
       const url = el?.dataset.url || el?.dataset.viewerUrl;
       if (!url) { hud.hide(); return; }
-
-      if (byteState.get(url) === 'error') {
-        hud.show({ status: 'error', text: i18n.loadFailed });
-        return;
+      switch (imagePhase(url, pswp.currIndex)) {
+        case 'error': hud.show({ status: 'error', text: i18n.loadFailed }); break;
+        case 'resolving': hud.show({ status: 'loading', text: i18n.resolvingImage }); break;
+        case 'downloading': hud.show({ status: 'loading', text: i18n.downloading }); break;
+        case 'loaded': hud.hide(); break;
       }
-      if (fetchingState.get(url) === 'resolving') {
-        hud.show({ status: 'loading', text: i18n.resolvingImage });
-        return;
-      }
-      const painted = pswp.currSlide?.content?.state === 'loaded' || byteState.get(url) === 'loaded';
-      if (painted) { hud.hide(); return; }
-      hud.show({ status: 'loading', text: i18n.downloading });
     }
 
     // Mirror PhotoSwipe's own image load lifecycle into byteState.
@@ -415,12 +408,8 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
 
       const trueDimKnown = store.imageDimensions.has(viewerUrl) || (el.tagName === 'IMG' && (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0);
 
-      // Only use data-thumb as PhotoSwipe's low-res placeholder when it's a real
-      // standalone thumbnail. E-Hentai "Normal" thumbs are sprite sheets (a whole
-      // strip of cells in one image, marked by thumbX); PhotoSwipe can't crop a
-      // single cell, so it would stretch the entire strip across the slide — the
-      // band that flashes at the top before the full image loads. No msrc for
-      // those: fall back to the plain loading state.
+      // No msrc for sprite-sheet thumbs (thumbX set): PhotoSwipe can't crop one
+      // cell, so it would stretch the whole strip across the slide.
       const msrc = el.dataset.thumbX !== undefined ? undefined : el.dataset.thumb;
 
       if (resolvedSrc && resolvedSrc.indexOf('x.gif') === -1 && trueDimKnown) {
@@ -431,14 +420,11 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
           h: dim.h,
         } as any;
       } else {
-        // In scroll mode, the waterfall may have already created a real <img> that's
-        // loading or will load soon (lazy-load observer, thumbnail panel fallback).
-        // Reuse that element's byte-load chain instead of spinning up a second one
-        // (throwaway new Image() below) — the existing chain has its own retry ladder,
-        // and when it completes, sp-image-loaded triggers refreshSlideContent. Starting
-        // a second chain doubles the retry storm (2 × 6 attempts = 12+ requests for one
-        // failing image), overloads the node, and triggers abuse limits. Non-scroll mode
-        // or still-placeholder elements proceed with the reader's own fetch as before.
+        // Scroll mode: if the waterfall already made a real <img>, reuse its
+        // byte-load chain (which has its own retry ladder + fires sp-image-loaded)
+        // rather than starting a second one — two chains doubled the retry storm
+        // into the node's abuse limits. Placeholders / non-scroll fall through to
+        // the reader's own fetch.
         const isWaterfallImage = store.settings.scrollMode && el.tagName === 'IMG';
 
         e.itemData = {
@@ -448,20 +434,14 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
           h: dim.h,
         } as any;
 
-        // Only start the reader's own fetch when the element is still a placeholder
-        // (waterfall hasn't taken over yet) or we're in non-scroll mode (reader is the
-        // only loader). If the waterfall's <img> is already loading, trust its chain.
         if (!isWaterfallImage && !fetchingState.has(viewerUrl) && viewerUrl) {
           fetchingState.set(viewerUrl, 'resolving');
           if (pswp && pswp.currIndex === e.index) refreshHudForCurrent();
-          // The slide the user is looking at must resolve before its preloaded
-          // neighbors; closer to the current index = higher priority.
+          // Closer to the current index = higher priority (current slide first).
           const distance = pswp ? Math.abs(e.index - pswp.currIndex) : 0;
           const priority = 100 - distance;
-          // Guard against stale async callbacks: `myPswp` pins the instance this
-          // request belongs to (a close+reopen swaps `pswp`), and findLive()
-          // re-locates the slide by URL because loadPrevPage prepends and shifts
-          // every index — the captured e.index goes stale mid-flight.
+          // myPswp pins this instance (close+reopen swaps pswp); findLive re-locates
+          // the slide by URL since loadPrevPage prepends and shifts every index.
           const myPswp = pswp;
           const findLive = () => store.allImages.findIndex(im => (im.dataset.url || im.dataset.viewerUrl) === viewerUrl);
           resolveImageWithRetry(viewerUrl, { priority }).then(res => {
@@ -530,19 +510,9 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
         const el = store.allImages[index];
         const url = el?.dataset.url || el?.dataset.viewerUrl;
         if (!url || index < 0 || index >= store.allImages.length) return false;
-
-        // Terminal states: loaded or failed images aren't "loading" (speed bump should pass).
-        const bs = byteState.get(url);
-        if (bs === 'loaded' || bs === 'error') return false;
-
-        // Still in our resolve phase, or not resolved yet: definitely loading.
-        if (fetchingState.has(url) || !store.resolvedUrls.has(url)) return true;
-
-        // Resolved but PhotoSwipe hasn't confirmed byte completion: check its content state.
-        // Slides beyond preload range have no content yet, conservatively treat as loading.
-        const p = pswp as any;
-        const slide = p?.slides?.[index] || p?.getSlideByIndex?.(index);
-        return !slide?.content || slide.content.state !== 'loaded';
+        // Speed-bump only while genuinely in flight; terminal states (loaded/error) pass.
+        const phase = imagePhase(url, index);
+        return phase === 'resolving' || phase === 'downloading';
       },
       onEdgeForward: () => { if (store.nextUrl && !store.isFetching) loadNextPage(); },
       onEdgeBackward: () => { if (store.prevUrl && !store.isFetching) loadPrevPage(); },
