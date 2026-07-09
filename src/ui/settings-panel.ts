@@ -1,28 +1,52 @@
+import './settings-panel.css';
 import { store } from '../state/store';
 import { i18n } from '../utils/i18n';
+import { svgClose } from '../utils/icons';
 
 export interface SettingsPanelHandle {
-  getButtonElement: () => HTMLElement;
-  getPanelElement: () => HTMLElement;
+  getContainerElement: () => HTMLElement;
+  show: () => void;
+  hide: () => void;
+  isOpen: () => boolean;
 }
 
 interface SettingItem {
   label: string;
-  key: keyof Pick<typeof store.settings, 'scrollMode' | 'showControl' | 'autoEnterSinglePage'>;
+  key: keyof Pick<typeof store.settings, 'scrollMode' | 'showControl' | 'autoEnterSinglePage' | 'clickToEnterReader'>;
 }
 
 const SETTINGS: SettingItem[] = [
   { label: i18n.scrollMode, key: 'scrollMode' },
-  { label: i18n.showControl, key: 'showControl' },
   { label: i18n.autoEnter, key: 'autoEnterSinglePage' },
+  { label: i18n.clickToEnter, key: 'clickToEnterReader' },
 ];
 
-export function createSettingsPanel(): SettingsPanelHandle {
-  const settingsBtn = document.createElement('div');
-  settingsBtn.className = 'settings-btn';
+export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHandle {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'settings-backdrop';
 
-  const settingsPanel = document.createElement('div');
-  settingsPanel.className = 'settings-panel';
+  const bottomSheet = document.createElement('div');
+  bottomSheet.className = 'settings-bottom-sheet';
+
+  // Header with title and close button
+  const sheetHeader = document.createElement('div');
+  sheetHeader.className = 'settings-sheet-header';
+
+  const title = document.createElement('div');
+  title.className = 'settings-title';
+  title.textContent = i18n.settings;
+
+  const closeBtn = document.createElement('div');
+  closeBtn.className = 'settings-close-btn';
+  closeBtn.innerHTML = svgClose.replace('class="pswp__icn"', '');
+  closeBtn.onclick = (e) => {
+    e.stopPropagation();
+    hide();
+  };
+
+  sheetHeader.appendChild(title);
+  sheetHeader.appendChild(closeBtn);
+  bottomSheet.appendChild(sheetHeader);
 
   SETTINGS.forEach(({ label, key }) => {
     if (key === 'scrollMode' && store.activeAdapter && ['18comic', '4KHD'].includes(store.activeAdapter.name)) {
@@ -42,7 +66,8 @@ export function createSettingsPanel(): SettingsPanelHandle {
     slider.className = 'toggle-slider';
     toggle.appendChild(slider);
 
-    toggle.onclick = () => {
+    toggle.onclick = (e) => {
+      e.stopPropagation();
       const newValue = !store.settings[key];
       store.updateSetting(key, newValue);
       toggle.classList.toggle('on', newValue);
@@ -53,7 +78,7 @@ export function createSettingsPanel(): SettingsPanelHandle {
 
     item.appendChild(labelEl);
     item.appendChild(toggle);
-    settingsPanel.appendChild(item);
+    bottomSheet.appendChild(item);
   });
 
   // Auto-play interval setting
@@ -65,46 +90,152 @@ export function createSettingsPanel(): SettingsPanelHandle {
   intervalLabel.textContent = i18n.playSpeed;
 
   const intervalRight = document.createElement('div');
-  intervalRight.style.cssText = 'display:flex;align-items:center;gap:4px;';
+  intervalRight.className = 'stepper-control';
+
+  const minusBtn = document.createElement('div');
+  minusBtn.className = 'stepper-btn';
+  minusBtn.textContent = '−';
 
   const intervalInput = document.createElement('input');
   intervalInput.type = 'number';
   intervalInput.className = 'interval-input';
   intervalInput.min = '1';
   intervalInput.max = '60';
-  intervalInput.step = '0.5';
+  intervalInput.step = '1';
   intervalInput.value = String(store.settings.autoPlayInterval / 1000);
   intervalInput.onclick = (e) => e.stopPropagation();
-  intervalInput.onchange = (e) => {
-    const value = parseFloat((e.target as HTMLInputElement).value);
-    if (!isNaN(value) && value >= 1 && value <= 60) {
-      store.updateSetting('autoPlayInterval', value * 1000);
+
+  const plusBtn = document.createElement('div');
+  plusBtn.className = 'stepper-btn';
+  plusBtn.textContent = '+';
+
+  const updateInterval = (val: number) => {
+    if (!isNaN(val) && val >= 1 && val <= 60) {
+      intervalInput.value = String(val);
+      store.updateSetting('autoPlayInterval', val * 1000);
     }
   };
 
-  const intervalUnit = document.createElement('span');
-  intervalUnit.textContent = 's';
-  intervalUnit.style.cssText = 'font-size:12px;color:#888;';
+  intervalInput.onchange = (e) => {
+    updateInterval(parseFloat((e.target as HTMLInputElement).value));
+  };
 
+  minusBtn.onclick = (e) => {
+    e.stopPropagation();
+    let current = parseFloat(intervalInput.value);
+    if (isNaN(current)) current = 5;
+    updateInterval(Math.max(5, current - 5));
+  };
+
+  plusBtn.onclick = (e) => {
+    e.stopPropagation();
+    let current = parseFloat(intervalInput.value);
+    if (isNaN(current)) current = 5;
+    updateInterval(Math.min(60, current + 5));
+  };
+
+  intervalRight.appendChild(minusBtn);
   intervalRight.appendChild(intervalInput);
-  intervalRight.appendChild(intervalUnit);
+  intervalRight.appendChild(plusBtn);
+
   intervalItem.appendChild(intervalLabel);
   intervalItem.appendChild(intervalRight);
-  settingsPanel.appendChild(intervalItem);
+  bottomSheet.appendChild(intervalItem);
 
-  settingsBtn.onclick = (e) => {
-    e.stopPropagation();
-    settingsPanel.classList.toggle('show');
-  };
+  // Thumbnail Position setting (Apple-style Segmented Control)
+  const posItem = document.createElement('div');
+  posItem.className = 'settings-item';
 
-  document.addEventListener('click', (e) => {
-    if (!settingsPanel.contains(e.target as Node) && !settingsBtn.contains(e.target as Node)) {
-      settingsPanel.classList.remove('show');
-    }
+  const posLabel = document.createElement('span');
+  posLabel.className = 'settings-label';
+  posLabel.textContent = i18n.thumbnailPosition;
+
+  const segmentControl = document.createElement('div');
+  segmentControl.className = 'segment-control';
+
+  const posOptions = [
+    { value: 'top', label: i18n.posTop },
+    { value: 'bottom', label: i18n.posBottom },
+    { value: 'left', label: i18n.posLeft },
+    { value: 'right', label: i18n.posRight },
+  ];
+
+  const segmentItems: HTMLElement[] = [];
+
+  posOptions.forEach(opt => {
+    const item = document.createElement('div');
+    item.className = `segment-item${store.settings.thumbnailPosition === opt.value ? ' active' : ''}`;
+    item.textContent = opt.label;
+
+    item.onclick = (e) => {
+      e.stopPropagation();
+      if (store.settings.thumbnailPosition === opt.value) return;
+
+      store.updateSetting('thumbnailPosition', opt.value as any);
+      segmentItems.forEach(el => el.classList.remove('active'));
+      item.classList.add('active');
+    };
+
+    segmentItems.push(item);
+    segmentControl.appendChild(item);
   });
 
+  posItem.appendChild(posLabel);
+  posItem.appendChild(segmentControl);
+  bottomSheet.appendChild(posItem);
+
+  backdrop.appendChild(bottomSheet);
+
+  const show = () => {
+    if (window.matchMedia('(hover: hover) and (pointer: fine)').matches && !document.documentElement.classList.contains('hr-mobile')) {
+      // Hardcode width for desktop to prevent CSS transition measurement issues
+      const panelWidth = 340;
+      const rect = anchorElement.getBoundingClientRect();
+      
+      // Temporarily display block to measure height if needed, but since it's just opacity: 0,
+      // getBoundingClientRect() works fine before 'show' is added
+      const panelRect = bottomSheet.getBoundingClientRect();
+      const panelHeight = panelRect.height || 300; // Fallback if 0
+
+      let top = rect.top + rect.height / 2 - panelHeight / 2;
+      top = Math.max(16, Math.min(window.innerHeight - panelHeight - 16, top));
+
+      bottomSheet.style.top = `${top}px`;
+      bottomSheet.style.bottom = 'auto';
+
+      if (rect.left < window.innerWidth / 2) {
+        bottomSheet.style.left = `${rect.right + 20}px`;
+        bottomSheet.style.transformOrigin = 'left center';
+      } else {
+        bottomSheet.style.left = `${rect.left - panelWidth - 20}px`;
+        bottomSheet.style.transformOrigin = 'right center';
+      }
+      
+      // Trigger reflow to ensure styles are applied before adding the show class
+      void bottomSheet.offsetHeight;
+    } else {
+      bottomSheet.style.cssText = '';
+    }
+    
+    backdrop.classList.add('show');
+  };
+
+  const hide = () => {
+    backdrop.classList.remove('show');
+  };
+
+  backdrop.onclick = (e) => {
+    if (e.target === backdrop) {
+      hide();
+    }
+  };
+
+  const isOpen = () => backdrop.classList.contains('show');
+
   return {
-    getButtonElement: () => settingsBtn,
-    getPanelElement: () => settingsPanel,
+    getContainerElement: () => backdrop,
+    show,
+    hide,
+    isOpen,
   };
 }

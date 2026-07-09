@@ -1,29 +1,36 @@
 # <img src="src/assets/icon.png" width="48" height="48" align="top" /> Hentai Reader (原 E-Hentai Plus)
 
-由 E-Hentai Plus 升级而来的多站点通用阅读框架。
-为你提供增强阅读体验，支持无限卷轴、全屏阅读器模式和智能图片加载。
+面向图库的高性能通用阅读器。现已适配移动端和触控设备，并持续适配更多站点。
 
-目前已适配以下网站（未来将适配更多）：
+目前已适配（未来将适配更多）：
 - E-Hentai / ExHentai
-- 18comic (禁漫天堂)
+- 18comic（禁漫天堂）
 - 4KHD
 
 [English](README.md)
 
+## 为什么选择 Hentai Reader
+
+- **为性能而生。** DOM 虚拟化自动卸载视口外的图片，配合方向性预取提前加载即将浏览的内容，上千张高清大图也能保持稳定帧率、不撑爆内存。
+- **随处可用。** 完整的桌面端操作（滚轮翻页、键盘、点击区）与一流的触控支持并存——点击翻页区、滑动翻页、双指缩放、自动隐藏界面——两端体验皆如原生。
+- **一套阅读器，通吃所有站点。** 基于适配器的统一内核在各站点提供一致的阅读体验；新增站点无需改动阅读器本身。
+- **稳健容错。** 加载失败自动重试并切换节点，配合「加载感知」的滚动门控，避免翻页冲过尚未加载完成的图片。
+
 ## 功能特性
 
-- **一键卷轴模式** — 开启后将多页图库转换为无限滚动视图，并自动无缝加载后续页面；同时智能保留原生页面的关键元数据（如标题、标签、评论等）。支持随时开关与即时刷新。
-- **沉浸式阅读器** — 提供全屏无干扰的单图阅读体验。支持键盘、鼠标滚轮、屏幕边缘点击等多种翻页方式，内置高级缩略图侧边栏用于快速跳转。
-- **极致流畅的性能引擎** — 采用智能内存回收技术与底层 DOM 虚拟化，自动卸载非可视区域节点。即使单次加载上千张高清大图，也能保持 60fps 的稳定帧率，彻底告别浏览器内存溢出。
-- **高效反爬虫解码引擎 (New)** — 针对 18comic 的乱序反爬虫图集，业内首创采用 HTML5 硬件加速解码与极速重组算法，大幅降低重组时的 CPU 满载与发热，解决页面卡死顽疾。
-- **智能防屏蔽反制 (New)** — 针对 4KHD 等频繁更换或重定向域名的网站，引入智能特征寻址与跳转跟随机制，确保脚本在网站更换网址后依然有效。
-- **断网恢复与容错** — 具备完善的图片加载失败重试机制，提供可视化悬浮控件，支持随时查看加载进度与手动干预重载。
-- **自动播放** — 提供自定义播放速度的幻灯片模式，彻底解放双手。
+- **无限卷轴模式** — 将多页图库转换为连续纵向滚动并自动预取，同时保留原生页面元数据（标签、标题、评论）。支持随时开关与即时刷新。
+- **沉浸式阅读器** — 全屏无干扰阅读，支持键盘、滚轮、点击、滑动多种翻页方式，内置虚拟滚动缩略图面板用于快速跳转。
+- **性能引擎** — DOM 虚拟化与智能内存回收，在上千张高清大图下保持稳定帧率、告别内存溢出。
+- **桌面与触控** — 完整的桌面端操作（滚轮翻页、键盘、点击区），以及一流的触控支持：边缘点击翻页、滑动翻页、双指缩放、定时自动隐藏界面，专为单手阅读设计。
+- **18comic 解码引擎** — 采用 HTML5 硬件加速反乱序与快速 JPEG 重组，以极低 CPU 占用解码 18comic 的乱序图片，且不卡死浏览器。
+- **智能防屏蔽** — 域名特征匹配与重定向跟随，确保脚本在 4KHD 等频繁更换域名的站点上持续可用。
+- **稳健加载** — 图片失败自动重试并切换 hath 节点，统一状态 HUD 显示加载进度，「加载感知」滚动门控在未加载页面处止步。
+- **自动播放** — 可调速的幻灯片模式，解放双手。
 
 ## 安装
 
 1. 安装 [Tampermonkey](https://www.tampermonkey.net/) 浏览器扩展
-2. 从 [Sleazy Fork](https://sleazyfork.org/zh-CN/scripts/565718-hentai-reader) 或 [Github release](https://github.com/Leovikii/Hentai-Reader/releases/latest/download/hentai-reader.user.js) 安装脚本
+2. 从 [Sleazy Fork](https://sleazyfork.org/zh-CN/scripts/565718-hentai-reader) 或 [GitHub release](https://github.com/Leovikii/Hentai-Reader/releases/latest/download/hentai-reader.user.js) 安装脚本
 
 ## 从源码构建
 
@@ -38,39 +45,36 @@ npm run build  # 生产构建
 ## 技术栈
 
 - **TypeScript** + **Vite** + **vite-plugin-monkey**
-- **UnoCSS**
+- **PhotoSwipe**（阅读器）+ **UnoCSS**
 
 ## 项目结构
 
 ```
 src/
-├── main.ts                    # 入口文件
-├── menu-commands.ts           # Tampermonkey 菜单命令
-├── types/index.ts             # 类型定义
-├── state/
-│   ├── config.ts              # 常量与设置
-│   └── store.ts               # 集中式状态管理
-├── utils/
-│   ├── dom.ts                 # DOM 工具函数
-│   └── icons.ts               # SVG 图标
+├── main.ts                       # 入口文件
+├── sites/                        # 各站点适配器（新增站点在此）
+│   ├── site-manager.ts           # 适配器选择
+│   ├── e-hentai/ · 18comic/ · 4khd/
+├── features/
+│   ├── scroll-mode.ts            # 无限卷轴模式
+│   ├── single-page-mode.ts       # 阅读模式门面
+│   ├── image-retry.ts            # 共享的解析/字节加载重试
+│   └── prefetch-controller.ts    # 方向性预取
 ├── services/
-│   ├── page-parser.ts         # 页面 URL 与范围解析
-│   ├── image-loader.ts        # 图片加载、重试与缓存
-│   ├── request-queue.ts       # 并发请求队列
-│   └── prefetch.ts            # 下一页预取
+│   ├── net-limiter.ts            # 并发与优先级限流器
+│   └── page-parser.ts            # 页面 URL 与范围解析
 ├── ui/
-│   ├── styles.css             # 样式
-│   ├── float-control.ts       # 悬浮控制按钮
-│   ├── settings-panel.ts      # 设置面板
+│   ├── float-control.ts          # 悬浮控制按钮
+│   ├── settings-panel.ts         # 设置面板
+│   ├── components/status-hud.ts  # 加载状态 HUD
 │   └── single-page/
-│       ├── overlay.ts         # 阅读模式覆盖层
-│       ├── scrollbar.ts       # 滚动条与缩略图面板
-│       ├── thumbnail-panel.ts # 虚拟滚动缩略图
-│       ├── navigation.ts      # 键盘/滚轮/点击导航
-│       └── auto-play.ts       # 自动播放逻辑
-└── features/
-    ├── scroll-mode.ts         # 无限卷轴模式
-    └── single-page-mode.ts    # 阅读模式门面
+│       ├── overlay.ts            # 阅读器覆盖层（PhotoSwipe）
+│       ├── wheel-pager.ts        # 速度驱动滚轮翻页 + 加载门控
+│       ├── auto-play.ts          # 自动播放逻辑
+│       └── thumbnail-panel/      # 虚拟滚动缩略图
+├── state/                        # config.ts · store.ts
+├── types/                        # index.ts · site-adapter.ts
+└── utils/                        # dom · i18n · icons · viewport
 ```
 
 ## 许可证

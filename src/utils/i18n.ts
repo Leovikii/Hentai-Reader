@@ -6,13 +6,20 @@ export const i18n = {
   autoPlay: isZH ? '自动翻页' : 'Auto Play',
   settings: isZH ? '设置' : 'Settings',
   backToTop: isZH ? '回到顶部' : 'Back to Top',
+  play: isZH ? '播放' : 'Play',
+  pause: isZH ? '暂停' : 'Pause',
 
   // Settings Panel
   scrollMode: isZH ? '卷轴模式' : 'Scroll Mode',
   autoEnter: isZH ? '自动进入阅读器' : 'Auto Enter Reader',
-  showControl: isZH ? '显示悬浮控件' : 'Show Float Control',
+  clickToEnter: isZH ? '点击图片进入阅读器' : 'Click Image to Enter Reader',
   readerWidth: isZH ? '阅读器最大宽度' : 'Reader Max Width',
-  playSpeed: isZH ? '自动翻页速度' : 'Auto Play Speed',
+  playSpeed: isZH ? '自动翻页间隔 (秒)' : 'Auto Play Interval (s)',
+  thumbnailPosition: isZH ? '缩略图位置' : 'Thumbnail Position',
+  posBottom: isZH ? '底部' : 'Bottom',
+  posTop: isZH ? '顶部' : 'Top',
+  posLeft: isZH ? '左侧' : 'Left',
+  posRight: isZH ? '右侧' : 'Right',
   maxPreload: isZH ? '最大预加载数量' : 'Max Preload Count',
   close: isZH ? '关闭' : 'Close',
 
@@ -28,4 +35,6 @@ export const i18n = {
   reloading: isZH ? '重新加载中...' : 'Reloading...',
   loadFailed: isZH ? '加载失败' : 'Load Failed',
   waitImagesToLoad: isZH ? '请等待图片加载' : 'Please wait for images to load',
+  resolvingImage: isZH ? '解析图片真实地址中...' : 'Resolving Image URL...',
+  resolveImageFailed: isZH ? '图片解析失败' : 'Image URL fetch failed',
 };

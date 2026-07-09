@@ -27,6 +27,8 @@ class Store {
   allImages: HTMLElement[] = [];
   autoPlayTimer: ReturnType<typeof setInterval> | null = null;
   autoPlay = false;  // Session-only, not persisted
+  resolvedUrls: Map<string, string> = new Map(); // Cache: placeholder/link URL -> real image URL
+  imageDimensions: Map<string, { w: number; h: number }> = new Map(); // Cache dimensions for PhotoSwipe
 
   constructor() {
     this._settings = loadSettings();

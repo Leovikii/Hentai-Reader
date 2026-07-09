@@ -1,0 +1,80 @@
+/* Theme */
+:root {
+  --accent: #F596AA;
+  --accent-hover: #F7ABBE;
+}
+
+/* Base styles — only applied in scroll mode */
+html.scroll-mode body {
+  margin: 0;
+}
+
+html.scroll-mode #gdt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 1200px;
+  margin: auto;
+  padding-bottom: 100px;
+}
+
+/* Scroll mode */
+.page-batch {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 60px;
+}
+
+/* While the reader is open in scroll mode, the underlying waterfall is still
+   laid out (we need its geometry for start-index calc on open and
+   scrollIntoView on close), but must not paint: otherwise the page scroll
+   resetting toward the top flashes the first images behind the PhotoSwipe
+   overlay for a frame before it covers them, and any animated WebPs there keep
+   decoding behind the overlay. visibility:hidden keeps geometry, kills paint. */
+html.hr-reader-open .page-batch {
+  visibility: hidden;
+}
+
+.r-img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  margin-bottom: 20px;
+  background: transparent;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+  position: relative;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 100vh;
+}
+
+.r-ph {
+  color: #555;
+  margin-bottom: 50px;
+  text-align: center;
+  min-height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: sans-serif;
+  font-size: 18px;
+  border: 1px dashed #333;
+  width: 100%;
+  flex-direction: column;
+  gap: 10px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 100vh;
+}
+
+.r-ph.loading {
+  color: #888;
+  border-color: #555;
+}
+
+.r-ph.error {
+  color: #d44;
+  border-color: #d44;
+}
+

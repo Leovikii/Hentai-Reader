@@ -1,0 +1,369 @@
+/* Bottom Sheet Settings */
+.settings-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 2147483648;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.settings-backdrop {
+  width: calc(100% / var(--hr-scale, 1));
+  height: calc(100% / var(--hr-scale, 1));
+  transform: scale(var(--hr-scale, 1));
+  transform-origin: top left;
+}
+
+.settings-backdrop.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.settings-bottom-sheet {
+  position: absolute;
+  bottom: -100%;
+  left: 0;
+  width: 100%;
+  background: #1a1a1a;
+  border-radius: 24px 24px 0 0;
+  padding: 0 20px 30px;
+  box-sizing: border-box;
+  transition: bottom 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.settings-backdrop.show .settings-bottom-sheet {
+  bottom: 0;
+}
+
+:root:not(.hr-mobile) .settings-bottom-sheet {
+  max-width: 480px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 16px 16px 0 0;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  :root:not(.hr-mobile) .settings-backdrop {
+    background: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  :root:not(.hr-mobile) .settings-bottom-sheet {
+    position: absolute;
+    width: 340px;
+    max-width: none;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    padding: 0 20px 20px;
+    transition: opacity 0.2s, transform 0.2s;
+    opacity: 0;
+    pointer-events: none;
+    bottom: auto !important;
+    left: auto;
+    transform: scale(0.95);
+  }
+
+  :root:not(.hr-mobile) .settings-backdrop.show .settings-bottom-sheet {
+    opacity: 1;
+    pointer-events: auto;
+    transform: scale(1);
+  }
+}
+
+.settings-sheet-header {
+  position: relative;
+  width: 100%;
+  height: 48px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.settings-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+  margin: 0;
+}
+
+.settings-close-btn {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  margin: auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.settings-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.settings-close-btn svg {
+  width: 22px;
+  height: 22px;
+  stroke: currentColor;
+}
+
+/* Settings items */
+.settings-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  font-size: 15px;
+  color: #eee;
+}
+
+.settings-item:last-child {
+  margin-bottom: 0;
+}
+
+.settings-label {
+  margin-right: 10px;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+/* Toggle switch */
+.toggle-switch {
+  width: 44px;
+  height: 24px;
+  background: #333;
+  border-radius: 12px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.toggle-switch.on {
+  background: var(--accent);
+}
+
+.toggle-slider {
+  width: 20px;
+  height: 20px;
+  background: #fff;
+  border-radius: 50%;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: left 0.3s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.toggle-switch.on .toggle-slider {
+  left: 22px;
+}
+
+/* Interval input & Segment Control */
+.stepper-control {
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.stepper-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  color: #fff;
+  cursor: pointer;
+  user-select: none;
+  font-size: 22px;
+  transition: background 0.2s;
+}
+
+.stepper-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.stepper-btn:active {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.interval-input {
+  width: 50px;
+  background: transparent;
+  border: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0;
+  color: #fff;
+  padding: 6px 0;
+  font-size: 15px;
+  text-align: center;
+  height: 36px;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.interval-input::-webkit-outer-spin-button,
+.interval-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+.interval-input[type=number] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.interval-input:focus {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.segment-control {
+  display: flex;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 4px;
+  gap: 4px;
+}
+
+.segment-item {
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.segment-item:hover {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.segment-item.active {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+
+
+:root.hr-mobile .settings-sheet-header {
+  height: 40px;
+  margin-bottom: 10px;
+}
+
+:root.hr-mobile .settings-title {
+  font-size: 17px;
+}
+
+:root.hr-mobile .settings-close-btn {
+  width: 36px;
+  height: 36px;
+}
+
+:root.hr-mobile .settings-close-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Tighter vertical rhythm: keep label and control on one row (no wrap) so each
+   item is one control-height tall, not two. Controls stay >=44px hit targets. */
+:root.hr-mobile .settings-item {
+  margin-bottom: 14px;
+  font-size: 15px;
+  font-weight: 600;
+  gap: 12px;
+}
+
+:root.hr-mobile .settings-item:last-child {
+  margin-bottom: 0;
+}
+
+:root.hr-mobile .toggle-switch {
+  width: 48px;
+  height: 28px;
+  border-radius: 14px;
+  flex-shrink: 0;
+}
+
+:root.hr-mobile .toggle-slider {
+  width: 24px;
+  height: 24px;
+  top: 2px;
+  left: 2px;
+}
+
+:root.hr-mobile .toggle-switch.on .toggle-slider {
+  left: 22px;
+}
+
+:root.hr-mobile .stepper-control {
+  border-radius: 10px;
+}
+
+:root.hr-mobile .stepper-btn {
+  width: 44px;
+  height: 34px;
+  font-size: 20px;
+  font-weight: 400;
+}
+
+:root.hr-mobile .interval-input {
+  width: 52px;
+  height: 34px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+:root.hr-mobile .segment-control {
+  padding: 3px;
+  gap: 3px;
+  border-radius: 10px;
+  display: flex;
+  flex: 1;
+  min-width: 180px;
+}
+
+:root.hr-mobile .segment-item {
+  flex: 1;
+  padding: 7px 6px;
+  font-size: 14px;
+  border-radius: 8px;
+  font-weight: 600;
+  text-align: center;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  white-space: nowrap;
+}
+
+:root.hr-mobile .settings-bottom-sheet {
+  padding: 0 20px 20px;
+}

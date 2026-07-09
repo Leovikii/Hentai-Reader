@@ -11,7 +11,10 @@ export function initSinglePageMode(): SinglePageModeHandle {
       store.nextUrl = nextUrl;
     },
     onLoadPrevPage: (links, prevUrl) => {
-      processBatch(links, store.currPage - 1, undefined, true, store.prevUrl || undefined);
+      // Decrement so consecutive prev-page loads get distinct, correct P-labels
+      // (symmetric with onLoadNextPage's currPage++); it's only a display label.
+      store.currPage--;
+      processBatch(links, store.currPage, undefined, true, store.prevUrl || undefined);
       store.prevUrl = prevUrl;
     },
   });
