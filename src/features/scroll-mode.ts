@@ -104,6 +104,10 @@ export function loadPlaceholderImage(placeholder: HTMLElement) {
       if (thumb) img.dataset.thumbSrc = thumb;
       if (placeholder.dataset.thumbW) img.dataset.thumbW = placeholder.dataset.thumbW;
       if (placeholder.dataset.thumbH) img.dataset.thumbH = placeholder.dataset.thumbH;
+      // Carry the sprite-sheet crop offset too, so the thumbnail panel can crop
+      // this cell while the full image is still loading (scroll-mode reader).
+      if (placeholder.dataset.thumbX !== undefined) img.dataset.thumbX = placeholder.dataset.thumbX;
+      if (placeholder.dataset.thumbY !== undefined) img.dataset.thumbY = placeholder.dataset.thumbY;
       if (res.nl) img.dataset.nl = res.nl;
       
       if (store.activeAdapter?.extractDimensionFromResolvedUrl) {
@@ -228,6 +232,8 @@ export function processBatch(links: PageLink[], pIndex: number, container?: HTML
     if (link.thumb) placeholder.dataset.thumb = link.thumb;
     if (link.thumbW) placeholder.dataset.thumbW = String(link.thumbW);
     if (link.thumbH) placeholder.dataset.thumbH = String(link.thumbH);
+    if (link.thumbX !== undefined) placeholder.dataset.thumbX = String(link.thumbX);
+    if (link.thumbY !== undefined) placeholder.dataset.thumbY = String(link.thumbY);
 
     placeholder.innerHTML = `
       <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; transform: translateY(-20px);">

@@ -34,20 +34,39 @@ function extractLinks(doc: Document): PageLink[] {
   return Array.from(qa('#gdt a', doc)).map(a => {
     const url = (a as HTMLAnchorElement).href;
     let thumb: string | undefined;
-    
-    const divWithBg = a.closest('div[style*="background"]');
+    let thumbX: number | undefined;
+    let thumbY: number | undefined;
+    let thumbW: number | undefined;
+    let thumbH: number | undefined;
+
+    // The cropping div is a *descendant* of the <a>, so query forward, not up.
+    const divWithBg = a.querySelector('div[style*="background"]');
     if (divWithBg) {
+      // "Normal" thumbnails: one sprite sheet holds a row of thumbnails, and
+      // this div crops to a single cell via width/height + background-position.
+      // Capture the crop box so the panel can draw just this cell instead of
+      // squashing the whole strip.
       const style = divWithBg.getAttribute('style') || '';
       const match = style.match(/url\(['"]?([^)'"]+)['"]?\)/);
       if (match) thumb = match[1];
+      // background-position after the url(): e.g. "-800px 0 no-repeat". The
+      // second value is often unitless (CSS lets "0" drop its unit), so the px
+      // unit must be optional on each length — not "px?" which still forces the p.
+      const afterUrl = style.slice(style.indexOf(match ? match[0] : '') + (match ? match[0].length : 0));
+      const pos = afterUrl.match(/(-?\d+)(?:px)?\s+(-?\d+)(?:px)?/);
+      if (pos) { thumbX = Math.abs(parseInt(pos[1], 10)); thumbY = Math.abs(parseInt(pos[2], 10)); }
+      const wM = style.match(/width:\s*(\d+)px/);
+      const hM = style.match(/height:\s*(\d+)px/);
+      if (wM) thumbW = parseInt(wM[1], 10);
+      if (hM) thumbH = parseInt(hM[1], 10);
     } else {
       const img = a.querySelector('img');
       if (img && img.src && !img.src.endsWith('x.gif')) {
         thumb = img.src;
       }
     }
-    
-    return { url, thumb };
+
+    return { url, thumb, thumbX, thumbY, thumbW, thumbH };
   });
 }
 
@@ -132,6 +151,8 @@ export const EHentaiAdapter: SiteAdapter = {
 
         return { src: imgSrc, nl: nextNlToken ?? undefined };
       } catch (err) {
+        // A jump cancelled this queued resolve — abandon it, don't re-queue.
+        if (err && typeof err === 'object' && 'cancelled' in err) return null;
         if (retries < CFG.maxRetries) {
           const isRateLimited = err && typeof err === 'object' && 'rateLimited' in err;
           // On rate-limit the shared limiter already holds every request for 5s

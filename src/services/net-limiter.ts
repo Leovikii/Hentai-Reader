@@ -53,6 +53,26 @@ export class NetLimiter {
     this.pump();
   }
 
+  /**
+   * Drop still-queued jobs matching `predicate` (already-running jobs are left
+   * alone — they can't be un-fetched). Used on a large jump: the resolves queued
+   * for the abandoned position are cancelled so their slots free up immediately
+   * for the new position instead of draining in insertion order. Rejected jobs
+   * settle so awaiting callers don't hang.
+   */
+  cancel(predicate: (priority: number, seq: number) => boolean): void {
+    if (this.queue.length === 0) return;
+    const kept: Job<unknown>[] = [];
+    for (const job of this.queue) {
+      if (predicate(job.priority, job.seq)) {
+        job.reject({ cancelled: true });
+      } else {
+        kept.push(job);
+      }
+    }
+    this.queue = kept;
+  }
+
   private pump(): void {
     const now = Date.now();
     if (now < this.pausedUntil) {

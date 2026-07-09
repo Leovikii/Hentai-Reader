@@ -20,4 +20,7 @@ export interface SinglePageModeHandle {
   isActive: () => boolean;
   getOverlayElement: () => HTMLElement;
   jumpTo: (index: number) => void;
+  /** Non-scroll dwell warm-up: prefetch the first few images' bytes so the
+   * reader opens instantly. No-op once the reader is already active. */
+  warmupInitial: (count: number) => void;
 }

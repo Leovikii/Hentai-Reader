@@ -3,6 +3,8 @@ export interface PageLink {
   thumb?: string;
   thumbW?: number;
   thumbH?: number;
+  thumbX?: number;  // sprite-sheet crop offset X (E-Hentai Normal thumbnails)
+  thumbY?: number;  // sprite-sheet crop offset Y
 }
 
 export interface SiteAdapter {

@@ -1,5 +1,4 @@
 import { store } from '../../../state/store';
-import { loadPlaceholderImage } from '../../../features/scroll-mode';
 
 
 const VISIBLE_COUNT = 15;
@@ -142,14 +141,23 @@ export function createThumbnailPanel(
     }
   }
 
-  function makeThumbCanvas(source: CanvasImageSource, natW: number, natH: number): HTMLCanvasElement {
-    let w = natW, h = natH;
+  function makeThumbCanvas(source: CanvasImageSource, natW: number, natH: number,
+                           crop?: { x: number; y: number; w: number; h: number }): HTMLCanvasElement {
+    let w = crop ? crop.w : natW;
+    let h = crop ? crop.h : natH;
     if (w > 300) { h = (h * 300) / w; w = 300; }
     const c = document.createElement('canvas');
     c.width = w;
     c.height = h;
     const ctx = c.getContext('2d');
-    if (ctx) ctx.drawImage(source, 0, 0, w, h);
+    if (ctx) {
+      if (crop) {
+        // Sprite sheet: draw only this cell's crop box, scaled to the canvas.
+        ctx.drawImage(source, crop.x, crop.y, crop.w, crop.h, 0, 0, w, h);
+      } else {
+        ctx.drawImage(source, 0, 0, w, h);
+      }
+    }
     return c;
   }
 
@@ -176,6 +184,23 @@ export function createThumbnailPanel(
       thumbSrc = (img as HTMLElement).dataset.thumb!;
     }
 
+    // Sprite-sheet crop (E-Hentai "Normal" thumbnails): one shared image holds a
+    // row of cells. Only crop the still-placeholder case — a loaded full image is
+    // its own picture, not a sprite. Cache key includes the crop so cells sharing
+    // one sprite URL don't collide on the same cached canvas.
+    let crop: { x: number; y: number; w: number; h: number } | undefined;
+    if (!isLoadedImg && img && (img as HTMLElement).dataset.thumbW && (img as HTMLElement).dataset.thumbH
+        && ((img as HTMLElement).dataset.thumbX !== undefined || (img as HTMLElement).dataset.thumbY !== undefined)) {
+      const d = (img as HTMLElement).dataset;
+      crop = {
+        x: parseInt(d.thumbX || '0', 10),
+        y: parseInt(d.thumbY || '0', 10),
+        w: parseInt(d.thumbW!, 10),
+        h: parseInt(d.thumbH!, 10),
+      };
+    }
+    const cacheKey = crop ? `${thumbSrc}#${crop.x},${crop.y},${crop.w},${crop.h}` : thumbSrc;
+
     if (thumbSrc) {
       let thumbCanvas = el.querySelector('canvas.sp-thumb-img') as HTMLCanvasElement | null;
       if (!thumbCanvas) {
@@ -187,24 +212,24 @@ export function createThumbnailPanel(
         label.className = 'sp-thumb-label';
         el.appendChild(label);
       }
-      if (thumbCanvas.dataset.src !== thumbSrc) {
-        thumbCanvas.dataset.src = thumbSrc;
+      if (thumbCanvas.dataset.src !== cacheKey) {
+        thumbCanvas.dataset.src = cacheKey;
 
-        const cached = getCachedThumb(thumbSrc);
+        const cached = getCachedThumb(cacheKey);
         if (cached) {
           blitToCanvas(thumbCanvas, cached);
         } else if (isLoadedImg) {
           const c = makeThumbCanvas(img as HTMLImageElement, (img as HTMLImageElement).naturalWidth, (img as HTMLImageElement).naturalHeight);
-          putCachedThumb(thumbSrc, c);
+          putCachedThumb(cacheKey, c);
           blitToCanvas(thumbCanvas, c);
         } else {
           const tempImg = new Image();
           tempImg.decoding = 'async';
           tempImg.onload = () => {
             // Cache regardless, but only paint if this slot still wants this src.
-            const c = makeThumbCanvas(tempImg, tempImg.naturalWidth, tempImg.naturalHeight);
-            putCachedThumb(thumbSrc, c);
-            if (thumbCanvas!.dataset.src === thumbSrc) {
+            const c = makeThumbCanvas(tempImg, tempImg.naturalWidth, tempImg.naturalHeight, crop);
+            putCachedThumb(cacheKey, c);
+            if (thumbCanvas!.dataset.src === cacheKey) {
               blitToCanvas(thumbCanvas!, c);
             }
           };
@@ -223,19 +248,6 @@ export function createThumbnailPanel(
       }
       ph.textContent = String(store.imageOffset + index + 1);
     }
-  }
-
-  let lazyLoadTimer: ReturnType<typeof setTimeout> | null = null;
-  function triggerLazyLoadForVisible() {
-    if (lazyLoadTimer) clearTimeout(lazyLoadTimer);
-    lazyLoadTimer = setTimeout(() => {
-      for (const [idx] of activeItems) {
-        const img = store.allImages[idx];
-        if (img && img.classList.contains('r-ph')) {
-          loadPlaceholderImage(img as HTMLElement);
-        }
-      }
-    }, 200);
   }
 
   function getScrollOffset(): number {
@@ -308,8 +320,6 @@ export function createThumbnailPanel(
       }
       renderItemContent(el, i);
     }
-
-    triggerLazyLoadForVisible();
   }
 
   function centerOnCurrent(): void {

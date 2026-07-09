@@ -62,6 +62,17 @@ import { initViewportScale } from './utils/viewport';
 
   createFloatControl(spmHandle);
 
+  // Non-scroll dwell warm-up: the grid downloads nothing until the reader opens,
+  // and a user who lingers on the gallery is almost certainly about to read from
+  // image 1. After a short dwell, prefetch the first few images' bytes so the
+  // reader opens instantly. Bailed automatically if they open sooner (warmup is
+  // deduped) or leave (the page unloads, killing in-flight downloads).
+  if (!store.settings.scrollMode) {
+    setTimeout(() => {
+      if (!spmHandle.isActive()) spmHandle.warmupInitial(3);
+    }, 1500);
+  }
+
 
 
   // Auto enter reader mode

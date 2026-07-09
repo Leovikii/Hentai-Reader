@@ -6,6 +6,7 @@ import { store } from '../../state/store';
 import type { PageLink } from '../../types/site-adapter';
 import { qa } from '../../utils/dom';
 import { prefetchImageUrl } from '../../features/scroll-mode';
+import { createPrefetchController } from '../../features/prefetch-controller';
 import { createSidebar } from './thumbnail-panel';
 import { createWheelPager } from './wheel-pager';
 import { createAutoPlay } from './auto-play';
@@ -52,6 +53,7 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
   }
 
   const hud = createStatusHUD();
+  const prefetch = createPrefetchController();
 
   function checkAndLoadNextPage(): void {
     if (!store.nextUrl || store.isFetching) return;
@@ -348,17 +350,25 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
 
       const trueDimKnown = store.imageDimensions.has(viewerUrl) || (el.tagName === 'IMG' && (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0);
 
+      // Only use data-thumb as PhotoSwipe's low-res placeholder when it's a real
+      // standalone thumbnail. E-Hentai "Normal" thumbs are sprite sheets (a whole
+      // strip of cells in one image, marked by thumbX); PhotoSwipe can't crop a
+      // single cell, so it would stretch the entire strip across the slide — the
+      // band that flashes at the top before the full image loads. No msrc for
+      // those: fall back to the plain loading state.
+      const msrc = el.dataset.thumbX !== undefined ? undefined : el.dataset.thumb;
+
       if (resolvedSrc && resolvedSrc.indexOf('x.gif') === -1 && trueDimKnown) {
         e.itemData = {
           src: resolvedSrc,
-          msrc: el.dataset.thumb, // low res
+          msrc, // low res (omitted for sprite-sheet thumbs)
           w: dim.w,
           h: dim.h,
         } as any;
       } else {
         e.itemData = {
           src: '', // Empty src triggers loading state
-          msrc: el.dataset.thumb,
+          msrc,
           w: dim.w,
           h: dim.h,
         } as any;
@@ -488,21 +498,9 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
            }
         }
 
-        // Prefetch node URLs (resolve only, not download) for the next few slides
-        // in the direction of travel, so continued paging is instant. Backward
-        // navigation (e.g. into a just-prepended prev page) prefetches earlier
-        // indices, which is exactly where the user is headed. Low priority so the
-        // current slide always wins ehLimiter slots.
-        const prefetchDir = isNavigatingBackwards ? -1 : 1;
-        for (let step = 1; step <= 4; step++) {
-          const idx = pswp.currIndex + prefetchDir * step;
-          if (idx < 0 || idx >= store.allImages.length) break;
-          const el = store.allImages[idx];
-          const vUrl = el?.dataset.url || el?.dataset.viewerUrl;
-          if (vUrl && !store.resolvedUrls.has(vUrl) && !fetchingState.has(vUrl)) {
-            prefetchImageUrl(vUrl, undefined, false, 10); // priority=10, won't block current
-          }
-        }
+        // Byte-prefetch a small window in the travel direction (and release
+        // downloads left behind, including everything skipped by a panel jump).
+        prefetch.setWindow(pswp.currIndex, isNavigatingBackwards ? -1 : 1);
       }
     });
 
@@ -602,12 +600,18 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
     });
 
     pswp.init();
+
+    // Seed the prefetch window on the opening image (no `change` fires on init),
+    // so the next few pages start downloading during the first dwell.
+    prefetch.setWindow(startIndex, 1);
   }
 
   function close(): void {
     autoPlay.stop();
     store.autoPlay = false;
     isActive = false;
+
+    prefetch.clear();
 
     document.documentElement.style.overflow = '';
     document.body.style.overflow = '';
@@ -667,11 +671,25 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
     autoPlay.reset();
   }
 
+  function warmupInitial(count: number): void {
+    if (isActive) return;  // already open, warmup is redundant
+    // Seed store.allImages from the DOM so the prefetch controller can resolve
+    // indices → URLs. This matches open()'s logic, which re-reads anyway.
+    store.allImages = Array.from(qa('.r-img, .r-ph')) as HTMLElement[];
+    if (store.allImages.length === 0) return;
+    const indices: number[] = [];
+    for (let i = 0; i < Math.min(count, store.allImages.length); i++) {
+      indices.push(i);
+    }
+    prefetch.warmup(indices);
+  }
+
   return {
     open,
     close,
     isActive: () => isActive,
     getOverlayElement: () => pswp?.element || document.body,
     jumpTo,
+    warmupInitial,
   };
 }
