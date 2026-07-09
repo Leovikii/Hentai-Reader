@@ -5,7 +5,8 @@ import './overlay.css';
 import { store } from '../../state/store';
 import type { PageLink } from '../../types/site-adapter';
 import { qa } from '../../utils/dom';
-import { prefetchImageUrl, pauseLazyLoad, resumeLazyLoad } from '../../features/scroll-mode';
+import { pauseLazyLoad, resumeLazyLoad } from '../../features/scroll-mode';
+import { resolveImageWithRetry, attachImageRetry } from '../../features/image-retry';
 import { createPrefetchController } from '../../features/prefetch-controller';
 import { createSidebar } from './thumbnail-panel';
 import { createWheelPager } from './wheel-pager';
@@ -394,20 +395,13 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
           // every index — the captured e.index goes stale mid-flight.
           const myPswp = pswp;
           const findLive = () => store.allImages.findIndex(im => (im.dataset.url || im.dataset.viewerUrl) === viewerUrl);
-          prefetchImageUrl(viewerUrl, undefined, false, priority).then(res => {
+          resolveImageWithRetry(viewerUrl, { priority }).then(res => {
             if (!myPswp || myPswp !== pswp) { fetchingState.delete(viewerUrl); return; }
             if (res && res.src) {
               fetchingState.set(viewerUrl, 'downloading');
               if (myPswp.currIndex === findLive()) {
                  hud.show({ status: 'loading', text: i18n.downloading });
               }
-              // Node-switch retry: e-hentai's #img carries an nl() token used to
-              // re-request the page from a *different* hath node when the current
-              // one serves a dead image. Track it so img.onerror can retry — the
-              // same mechanism scroll-mode's loadPlaceholderImage uses.
-              let currentNl = res.nl;
-              let nodeRetries = 0;
-              const MAX_NODE_RETRIES = 3;
 
               const failHud = () => {
                 fetchingState.delete(viewerUrl);
@@ -433,25 +427,15 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
                   autoPlay.start();
                 }
               };
-              img.onerror = () => {
-                // Dead hath node — ask for a fresh one via the nl token and retry,
-                // forcing a new resolve (bypassing the cached dead src). Only while
-                // a token is available and attempts remain; otherwise surface it.
-                if (currentNl && nodeRetries < MAX_NODE_RETRIES && myPswp === pswp) {
-                  nodeRetries++;
-                  prefetchImageUrl(viewerUrl, currentNl, true, priority).then(newRes => {
-                    if (!myPswp || myPswp !== pswp) { fetchingState.delete(viewerUrl); return; }
-                    if (newRes && newRes.src) {
-                      currentNl = newRes.nl;
-                      img.src = newRes.src;
-                    } else {
-                      failHud();
-                    }
-                  }).catch(failHud);
-                  return;
-                }
-                failHud();
-              };
+              // Byte-load retry: node-switch via nl token (e-hentai dead node),
+              // then plain same-URL retry (CDN sites). Shared with scroll mode.
+              attachImageRetry(img, {
+                viewerUrl,
+                nl: res.nl,
+                priority,
+                shouldContinue: () => myPswp === pswp,
+                onFail: failHud,
+              });
               img.src = res.src;
             } else {
               fetchingState.delete(viewerUrl);

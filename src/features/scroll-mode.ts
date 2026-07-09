@@ -2,6 +2,7 @@ import { store } from '../state/store';
 import { CFG } from '../state/config';
 import type { PageLink } from '../types/site-adapter';
 import { showToast } from '../utils/dom';
+import { resolveImageWithRetry, attachImageRetry } from './image-retry';
 
 function setErrorState(
   placeholder: HTMLElement,
@@ -70,26 +71,6 @@ export function prefetchImageUrl(url: string, nlToken?: string, force = false, p
   return task;
 }
 
-// Resolve an image URL, retrying automatically on failure up to CFG.maxRetries
-// with a delay between attempts. The retry (attempt > 0) forces a fresh request
-// rather than reusing the failed in-flight promise. Returns null only after all
-// attempts are exhausted — the caller then shows a static error (no manual retry
-// button, which used to swallow the click-to-enter-reader gesture).
-async function resolveWithRetry(url: string): Promise<{ src: string; nl?: string } | null> {
-  for (let attempt = 0; attempt <= CFG.maxRetries; attempt++) {
-    try {
-      const res = await prefetchImageUrl(url, undefined, attempt > 0);
-      if (res) return res;
-    } catch {
-      // fall through to the delay/retry
-    }
-    if (attempt < CFG.maxRetries) {
-      await new Promise(resolve => setTimeout(resolve, CFG.retryDelay));
-    }
-  }
-  return null;
-}
-
 export function loadPlaceholderImage(placeholder: HTMLElement) {
   const url = placeholder.dataset.url!;
   const pIndex = parseInt(placeholder.dataset.pIndex!);
@@ -106,7 +87,7 @@ export function loadPlaceholderImage(placeholder: HTMLElement) {
   placeholder.dataset.isFetching = 'true';
   placeholder.dataset.lazyLoaded = 'true';
 
-  resolveWithRetry(url).then(res => {
+  resolveImageWithRetry(url).then(res => {
     if (res) {
       const img = document.createElement('img');
       img.className = 'r-img';
@@ -130,48 +111,47 @@ export function loadPlaceholderImage(placeholder: HTMLElement) {
          }
       }
       let currentNlToken = res.nl;
-      let autoRetries = 0;
-      const MAX_AUTO_RETRIES = 3;
 
-      img.onerror = () => {
-        if (currentNlToken && autoRetries < MAX_AUTO_RETRIES) {
-          autoRetries++;
-          showToast(`P${pIndex}-${index + 1}: Auto requesting new node... (${autoRetries}/${MAX_AUTO_RETRIES})`, 3000);
-          
+      attachImageRetry(img, {
+        viewerUrl: url,
+        nl: currentNlToken,
+        priority: 20,
+        shouldContinue: () => !!placeholder.parentNode || !!img.parentNode,
+        onRetry: (attempt, kind) => {
+          if (kind === 'node') {
+            showToast(`P${pIndex}-${index + 1}: Auto requesting new node... (${attempt}/3)`, 3000);
+          } else {
+            showToast(`P${pIndex}-${index + 1}: Retrying... (${attempt}/2)`, 3000);
+          }
+          // Swap back to loading placeholder to show retry is in progress
           if (placeholder.parentNode) {
             placeholder.className = 'r-ph sp-placeholder loading';
             if (img.parentNode) img.parentNode.replaceChild(placeholder, img);
           }
-
-          prefetchImageUrl(url, currentNlToken, true, 20).then(newRes => {
-            if (newRes) {
-              img.src = newRes.src;
-              img.dataset.realSrc = newRes.src;
-              currentNlToken = newRes.nl;
-              if (placeholder.parentNode) {
-                placeholder.parentNode.replaceChild(img, placeholder);
-                // Node-switch succeeded — notify overlay to refresh this slide
-                const storeIdx = store.allImages.indexOf(placeholder);
-                if (storeIdx !== -1) {
-                  store.allImages[storeIdx] = img;
-                  document.dispatchEvent(new CustomEvent('sp-image-loaded', { detail: { index: storeIdx } }));
-                }
-              }
-            } else {
-              showError();
+        },
+        onSuccess: (newSrc) => {
+          img.dataset.realSrc = newSrc;
+          // Swap placeholder → img back into DOM on successful retry
+          if (placeholder.parentNode) {
+            placeholder.parentNode.replaceChild(img, placeholder);
+            const storeIdx = store.allImages.indexOf(placeholder);
+            if (storeIdx !== -1) {
+              store.allImages[storeIdx] = img;
+              document.dispatchEvent(new CustomEvent('sp-image-loaded', { detail: { index: storeIdx } }));
             }
-          }).catch(showError);
-        } else {
-          showError();
+          }
+        },
+        onFail: () => {
+          if (placeholder.parentNode) {
+            setErrorState(placeholder, pIndex, index);
+            if (img.parentNode) img.parentNode.replaceChild(placeholder, img);
+          } else if (img.parentNode) {
+            // Image is in DOM but placeholder detached — swap first, then error
+            img.parentNode.replaceChild(placeholder, img);
+            setErrorState(placeholder, pIndex, index);
+          }
         }
-      };
-
-      function showError() {
-        if (placeholder.parentNode) {
-          setErrorState(placeholder, pIndex, index);
-          if (img.parentNode) img.parentNode.replaceChild(placeholder, img);
-        }
-      }
+      });
 
       img.onload = () => {
         if (!img.dataset.locked && img.naturalWidth > 0) {
