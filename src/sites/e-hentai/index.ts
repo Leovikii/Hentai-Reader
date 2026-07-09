@@ -208,10 +208,6 @@ export const EHentaiAdapter: SiteAdapter = {
     return null;
   },
 
-  getNativeImages() {
-    return Array.from(qa('#gdt a', document)) as HTMLElement[];
-  },
-
   // Drop queued prefetch resolves for skipped-past images on a large jump. Our
   // resolve jobs can't be located in the limiter by URL, but prefetch resolves
   // are scheduled at priority <= 10 while foreground itemData resolves run at

@@ -48,7 +48,6 @@ export interface SiteAdapter {
   // UI helpers
   getContainer: () => HTMLElement | null; // Used for float control positioning
   hideOriginalElements?: () => void;      // Hide original page elements for scroll mode
-  getNativeImages?: () => HTMLElement[];  // Get original native image elements for positioning
 
   // Optional lifecycle hook: when the single page mode is closed, useful for syncing pagination URL
   onReaderClose?: (globalIndex: number) => void;

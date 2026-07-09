@@ -686,15 +686,6 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
     }
   });
 
-  function jumpTo(index: number): void {
-    if (!isActive) return;
-    store.currentImageIndex = Math.max(0, Math.min(index, store.allImages.length - 1));
-    if (pswp) {
-      pswp.goTo(store.currentImageIndex);
-    }
-    autoPlay.reset();
-  }
-
   function warmupInitial(count: number): void {
     if (isActive) return;  // already open, warmup is redundant
     // Seed store.allImages from the DOM so the prefetch controller can resolve
@@ -712,8 +703,6 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
     open,
     close,
     isActive: () => isActive,
-    getOverlayElement: () => pswp?.element || document.body,
-    jumpTo,
     warmupInitial,
   };
 }
