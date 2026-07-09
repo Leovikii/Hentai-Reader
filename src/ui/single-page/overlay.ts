@@ -401,6 +401,24 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
               if (myPswp.currIndex === findLive()) {
                  hud.show({ status: 'loading', text: i18n.downloading });
               }
+              // Node-switch retry: e-hentai's #img carries an nl() token used to
+              // re-request the page from a *different* hath node when the current
+              // one serves a dead image. Track it so img.onerror can retry — the
+              // same mechanism scroll-mode's loadPlaceholderImage uses.
+              let currentNl = res.nl;
+              let nodeRetries = 0;
+              const MAX_NODE_RETRIES = 3;
+
+              const failHud = () => {
+                fetchingState.delete(viewerUrl);
+                if (!myPswp || myPswp !== pswp) return;
+                const idx = findLive();
+                if (idx !== -1 && myPswp.currIndex === idx) {
+                  hud.show({ status: 'error', text: i18n.loadFailed });
+                  setTimeout(() => hud.hide(), 3000);
+                }
+              };
+
               const img = new Image();
               img.decoding = 'async';
               img.onload = () => {
@@ -416,13 +434,23 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
                 }
               };
               img.onerror = () => {
-                 fetchingState.delete(viewerUrl);
-                 if (!myPswp || myPswp !== pswp) return;
-                 const idx = findLive();
-                 if (idx !== -1 && myPswp.currIndex === idx) {
-                    hud.show({ status: 'error', text: i18n.loadFailed });
-                    setTimeout(() => hud.hide(), 3000);
-                 }
+                // Dead hath node — ask for a fresh one via the nl token and retry,
+                // forcing a new resolve (bypassing the cached dead src). Only while
+                // a token is available and attempts remain; otherwise surface it.
+                if (currentNl && nodeRetries < MAX_NODE_RETRIES && myPswp === pswp) {
+                  nodeRetries++;
+                  prefetchImageUrl(viewerUrl, currentNl, true, priority).then(newRes => {
+                    if (!myPswp || myPswp !== pswp) { fetchingState.delete(viewerUrl); return; }
+                    if (newRes && newRes.src) {
+                      currentNl = newRes.nl;
+                      img.src = newRes.src;
+                    } else {
+                      failHud();
+                    }
+                  }).catch(failHud);
+                  return;
+                }
+                failHud();
               };
               img.src = res.src;
             } else {
