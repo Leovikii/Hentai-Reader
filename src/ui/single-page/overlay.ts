@@ -282,6 +282,15 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
       document.removeEventListener('sp-image-loaded', handleImageLoaded);
     });
 
+    // PhotoSwipe's vertical-drag-to-close only fires when currZoomLevel <= fit.
+    // But fit is clamped at 1, while our initialZoomLevel magnifies small images
+    // (e.g. e-hentai's 614×900 → 750×1099, ~1.22x), making initial > fit and
+    // disabling the gesture. Lift fit to initial so the filled state counts as fit.
+    pswp.on('zoomLevelsUpdate', (e: any) => {
+      const zl = e.zoomLevels;
+      if (zl.initial > zl.fit) zl.fit = zl.initial;
+    });
+
     // A placeholder can be upgraded to a real <img> outside the overlay's own
     // itemData chain (thumbnail-panel-triggered load, scroll-mode lazy-load). When
     // that happens for a slide PhotoSwipe already built, refresh it so the resolved
