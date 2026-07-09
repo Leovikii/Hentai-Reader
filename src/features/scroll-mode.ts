@@ -21,15 +21,7 @@ function setErrorState(
       </div>
       <div style="font-size: 14px; color: rgba(255, 255, 255, 0.5); font-family: monospace; letter-spacing: 1px;">P${pIndex}-${index + 1}</div>
     </div>
-    <button class="retry-btn">Retry</button>
   `;
-  const btn = placeholder.querySelector('.retry-btn');
-  if (btn) {
-    btn.addEventListener('click', () => {
-      placeholder.dataset.isFetching = 'false';
-      loadPlaceholderImage(placeholder);
-    });
-  }
 }
 
 let lazyLoadObserver: IntersectionObserver | null = null;
@@ -78,6 +70,26 @@ export function prefetchImageUrl(url: string, nlToken?: string, force = false, p
   return task;
 }
 
+// Resolve an image URL, retrying automatically on failure up to CFG.maxRetries
+// with a delay between attempts. The retry (attempt > 0) forces a fresh request
+// rather than reusing the failed in-flight promise. Returns null only after all
+// attempts are exhausted — the caller then shows a static error (no manual retry
+// button, which used to swallow the click-to-enter-reader gesture).
+async function resolveWithRetry(url: string): Promise<{ src: string; nl?: string } | null> {
+  for (let attempt = 0; attempt <= CFG.maxRetries; attempt++) {
+    try {
+      const res = await prefetchImageUrl(url, undefined, attempt > 0);
+      if (res) return res;
+    } catch {
+      // fall through to the delay/retry
+    }
+    if (attempt < CFG.maxRetries) {
+      await new Promise(resolve => setTimeout(resolve, CFG.retryDelay));
+    }
+  }
+  return null;
+}
+
 export function loadPlaceholderImage(placeholder: HTMLElement) {
   const url = placeholder.dataset.url!;
   const pIndex = parseInt(placeholder.dataset.pIndex!);
@@ -93,8 +105,8 @@ export function loadPlaceholderImage(placeholder: HTMLElement) {
   }
   placeholder.dataset.isFetching = 'true';
   placeholder.dataset.lazyLoaded = 'true';
-  
-  prefetchImageUrl(url).then(res => {
+
+  resolveWithRetry(url).then(res => {
     if (res) {
       const img = document.createElement('img');
       img.className = 'r-img';

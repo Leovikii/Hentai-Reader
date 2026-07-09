@@ -68,18 +68,3 @@ html.scroll-mode #gdt {
   border-color: #d44;
 }
 
-.retry-btn {
-  padding: 8px 16px;
-  background: #333;
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  margin-top: 10px;
-}
-
-.retry-btn:hover {
-  background: #555;
-}
-
