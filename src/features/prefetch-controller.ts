@@ -1,33 +1,23 @@
 import { store } from '../state/store';
-import { ehLimiter } from '../services/net-limiter';
 import { prefetchImageUrl } from './scroll-mode';
 
 /**
- * Directional byte-prefetch controller for the non-scroll reader.
+ * Windowed byte-prefetch controller for the PhotoSwipe reader.
  *
- * Network is the scarce resource here: E-Hentai rate-limits resolve requests
- * (via ehLimiter) and meters daily image bandwidth, while physical bandwidth
- * caps how fast bytes arrive. Two levers follow from that:
+ * Downloads images in a sliding window (AHEAD in travel direction, BEHIND in
+ * the opposite) to balance reading smoothness with resource use. On large jumps
+ * (thumbnail-panel navigation), aborts out-of-window byte-downloads and asks the
+ * active adapter to cancel queued resolve/decode work, freeing slots for the new
+ * position immediately.
  *
- *   1. Prefetch — download the *bytes* of the next few images in the travel
- *      direction during the seconds the user dwells on the current one, so the
- *      viewer opens them instantly. (The old ±4 prefetch only ran the cheap
- *      resolve step and never downloaded bytes, so it bought almost nothing.)
- *   2. View-only — never spend bandwidth on images the user has skipped past.
- *      A thumbnail-panel jump from image 1 to 100 must abandon 2-99 and pour
- *      everything into 100 onward.
- *
- * Both collapse into one idea: a small window that follows the current index,
- * biased forward. Inside the window we ensure bytes are downloading; anything
- * that falls outside has its in-flight download aborted. The window is
- * deliberately small (see AHEAD/BEHIND) to respect the daily quota — a wasted
- * prefetch is spent quota.
- *
- * Scroll mode is untouched: it lazy-loads natively via IntersectionObserver.
+ * Each adapter cancels its own queue — e-hentai drops low-priority resolves from
+ * the rate limiter, 18comic clears its canvas-decode mutex, 4khd has no queue.
+ * The window is deliberately modest (5/2) to respect metered sites while staying
+ * smooth on others.
  */
 
-const AHEAD = 3;   // images to prefetch ahead of the current one
-const BEHIND = 1;  // keep one behind so a small back-step is still instant
+const AHEAD = 5;   // images to prefetch ahead in the travel direction
+const BEHIND = 2;  // keep two behind so small back-steps are instant
 
 export interface PrefetchController {
   /**
@@ -117,13 +107,14 @@ export function createPrefetchController(): PrefetchController {
       if (!wanted.has(url)) abort(url);
     }
 
-    // On a jump (new window doesn't touch the old centre) drop the queued
-    // prefetch resolves (priority <= 10) still waiting for the abandoned
-    // position, so their limiter slots free up for the new window at once. On a
-    // normal ±1 step the windows overlap, so skip this — cancelling resolves the
-    // step still wants would just stall them.
+    // On a jump (new window doesn't touch the old centre) tell the adapter to
+    // drop the prefetch work still queued for the abandoned position, so its
+    // resolve/decode slots free up for the new window at once. `wanted` is the
+    // set of URLs the new window still needs — the adapter cancels everything
+    // else it has queued. On a normal ±1 step the windows overlap, so skip this:
+    // cancelling work the step still wants would just stall it.
     const jumped = lastCenter < 0 || Math.abs(center - lastCenter) > AHEAD + BEHIND;
-    if (jumped) ehLimiter.cancel(priority => priority <= 10);
+    if (jumped) store.activeAdapter?.cancelPrefetch?.(wanted);
     lastCenter = center;
 
     // Prefetch nearest-first so the very next image lands soonest.

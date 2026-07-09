@@ -30,6 +30,14 @@ export interface SiteAdapter {
   // Bump the priority of a currently loading/queued image
   bumpPriority?: (url: string) => void;
 
+  // Optional: on a large reader jump, abandon still-queued prefetch work for
+  // images the user skipped past. `keepUrls` is the set of viewer URLs the
+  // prefetch controller still wants (the current window); anything else queued
+  // may be cancelled. Each adapter cancels via its own resolve queue — e-hentai
+  // drops low-priority ehLimiter jobs, 18comic clears its decode-mutex queue.
+  // Already-running work is left alone (it can't be un-fetched).
+  cancelPrefetch?: (keepUrls: Set<string>) => void;
+
   // Fetch the next page and get its links
   fetchPage: (url: string) => Promise<{
     links: PageLink[];

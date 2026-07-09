@@ -212,6 +212,15 @@ export const EHentaiAdapter: SiteAdapter = {
     return Array.from(qa('#gdt a', document)) as HTMLElement[];
   },
 
+  // Drop queued prefetch resolves for skipped-past images on a large jump. Our
+  // resolve jobs can't be located in the limiter by URL, but prefetch resolves
+  // are scheduled at priority <= 10 while foreground itemData resolves run at
+  // ~96-100, so cancelling the low-priority band precisely targets prefetch work
+  // and leaves the current image's resolve running. keepUrls is unused here.
+  cancelPrefetch(_keepUrls: Set<string>) {
+    ehLimiter.cancel((priority) => priority <= 10);
+  },
+
   onReaderClose(globalIndex: number) {
     if (store.settings.scrollMode) return;
     

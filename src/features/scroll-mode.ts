@@ -203,6 +203,23 @@ function initLazyLoad() {
   }, { rootMargin: '2000px 0px 2000px 0px' });
 }
 
+// While the reader is open the page scroll is frozen (overflow:hidden), so the
+// lazy-load observer wouldn't fire anyway — but relying on that side effect is
+// fragile. Pause it explicitly on reader open so a stray intersection (layout
+// shift, prepended prev-page) can't kick off an off-screen load the reader
+// doesn't want, then resume on close. disconnect() clears the watch list, so
+// resume re-observes every placeholder still awaiting load.
+export function pauseLazyLoad(): void {
+  lazyLoadObserver?.disconnect();
+}
+
+export function resumeLazyLoad(): void {
+  if (!lazyLoadObserver) return;
+  document.querySelectorAll<HTMLElement>('.r-ph').forEach(ph => {
+    if (!ph.dataset.lazyLoaded) lazyLoadObserver!.observe(ph);
+  });
+}
+
 export function processBatch(links: PageLink[], pIndex: number, container?: HTMLElement, prepend = false, pageUrl?: string): void {
   const batchDiv = document.createElement('div');
   batchDiv.className = 'page-batch';

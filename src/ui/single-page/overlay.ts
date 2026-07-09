@@ -5,7 +5,7 @@ import './overlay.css';
 import { store } from '../../state/store';
 import type { PageLink } from '../../types/site-adapter';
 import { qa } from '../../utils/dom';
-import { prefetchImageUrl } from '../../features/scroll-mode';
+import { prefetchImageUrl, pauseLazyLoad, resumeLazyLoad } from '../../features/scroll-mode';
 import { createPrefetchController } from '../../features/prefetch-controller';
 import { createSidebar } from './thumbnail-panel';
 import { createWheelPager } from './wheel-pager';
@@ -170,6 +170,12 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
     document.body.style.overflow = 'hidden';
 
     store.emit('readerModeChanged');
+
+    // Explicitly pause the scroll-mode lazy-load observer so it doesn't race with
+    // the reader's prefetch strategy. (overflow:hidden freezes the viewport so
+    // intersections stop firing anyway, but relying on that side-effect is fragile.)
+    // Only meaningful in scroll mode — non-scroll placeholders are never observed.
+    if (store.settings.scrollMode) pauseLazyLoad();
 
     // Force re-centering on the current image. Without this, lastCenteredIndex
     // would persist from the previous session, and if we re-open at the same
@@ -629,6 +635,11 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
     }
 
     if (store.settings.scrollMode) {
+      // Reader is closing back into the live waterfall — resume lazy-load so
+      // scrolling past the current position loads images again. disconnect()
+      // cleared the watch list, so this re-observes every still-pending placeholder.
+      resumeLazyLoad();
+
       const currentImages = Array.from(qa('.r-img, .r-ph')) as HTMLElement[];
       if (store.currentImageIndex >= 0 && store.currentImageIndex < currentImages.length) {
         const targetImg = currentImages[store.currentImageIndex];

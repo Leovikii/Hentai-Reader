@@ -3,7 +3,7 @@ import type { SiteAdapter, PageLink } from '../../types/site-adapter';
 declare const unsafeWindow: any;
 
 class Mutex {
-  private queue: { key: string, resolve: () => void }[] = [];
+  private queue: { key: string, resolve: () => void, reject: (reason?: unknown) => void }[] = [];
   private activeCount = 0;
   constructor(private maxConcurrent: number) {}
 
@@ -12,7 +12,7 @@ class Mutex {
       this.activeCount++;
       return;
     }
-    return new Promise(resolve => this.queue.push({ key, resolve }));
+    return new Promise((resolve, reject) => this.queue.push({ key, resolve, reject }));
   }
 
   bump(key: string): void {
@@ -21,6 +21,23 @@ class Mutex {
       const item = this.queue.splice(idx, 1)[0];
       this.queue.push(item);
     }
+  }
+
+  /**
+   * Drop still-waiting locks whose key matches `predicate`, rejecting them with
+   * a `{ cancelled: true }` sentinel. Already-running decodes are left alone —
+   * they hold a slot and can't be un-decoded. Used on a large reader jump to
+   * abandon the decodes queued for pages the user skipped past, so the target
+   * page's decode isn't stuck behind them.
+   */
+  cancel(predicate: (key: string) => boolean): void {
+    if (this.queue.length === 0) return;
+    const kept: typeof this.queue = [];
+    for (const item of this.queue) {
+      if (predicate(item.key)) item.reject({ cancelled: true });
+      else kept.push(item);
+    }
+    this.queue = kept;
   }
 
   unlock(): void {
@@ -255,6 +272,10 @@ export const Comic18Adapter: SiteAdapter = {
       })();
 
       imageCache.set(urlStr, p);
+      // A rejected decode (cancelled mid-jump, or a failed fetch) must not stay
+      // cached — a poisoned promise would be handed to every future visitor of
+      // this page. Evict it so a later visit can retry cleanly.
+      p.catch(() => { if (imageCache.get(urlStr) === p) imageCache.delete(urlStr); });
       // After this decode lands, reclaim memory from long-past pages (never
       // touches blobs still on screen). Fire-and-forget; failures are harmless.
       p.then(() => trimImageCache()).catch(() => {});
@@ -271,6 +292,13 @@ export const Comic18Adapter: SiteAdapter = {
 
   bumpPriority: (urlStr: string) => {
     decodeMutex.bump(urlStr);
+  },
+
+  cancelPrefetch: (keepUrls: Set<string>) => {
+    // A reader jump abandoned a range of pages. Drop the decodes still queued
+    // for any page outside the new window so the target page isn't stuck behind
+    // them. keepUrls holds the window's viewer URLs (the decode-queue keys).
+    decodeMutex.cancel((key) => !keepUrls.has(key));
   },
 
   getContainer: () => {
