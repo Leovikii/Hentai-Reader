@@ -288,16 +288,6 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
     document.addEventListener('sp-image-loaded', handleImageLoaded);
 
     const fetchingState = new Map<string, 'resolving' | 'downloading'>();
-    const tempImages = new Map<number, HTMLImageElement>(); // Keep track to abort
-
-    pswp.on('contentRemove', (e) => {
-      const content = e.content;
-      if (tempImages.has(content.index)) {
-        const tImg = tempImages.get(content.index)!;
-        tImg.src = '';
-        tempImages.delete(content.index);
-      }
-    });
 
     pswp.on('numItems', (e) => {
       e.numItems = store.allImages.length;
