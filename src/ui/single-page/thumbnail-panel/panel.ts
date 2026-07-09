@@ -1,4 +1,5 @@
 import { store } from '../../../state/store';
+import { loadPlaceholderImage } from '../../../features/scroll-mode';
 
 
 const VISIBLE_COUNT = 15;
@@ -250,6 +251,27 @@ export function createThumbnailPanel(
     }
   }
 
+  let fallbackLoadTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Sites without cheap standalone thumbnails (18comic: scrambled source, no
+  // preview image) can't show a panel preview for an unloaded page. For those,
+  // fall back to the shared full-image load path — the decoded result also warms
+  // resolvedUrls / the adapter cache, so the reader reuses it for free (no double
+  // download). Gated on the *absence* of a cheap thumb, per-item, so thumb-capable
+  // sites (e-hentai/4khd) keep their lightweight behaviour untouched. Debounced so
+  // only the range the user settles on loads, not every page flicked past.
+  function triggerFallbackLoadForVisible(): void {
+    if (fallbackLoadTimer) clearTimeout(fallbackLoadTimer);
+    fallbackLoadTimer = setTimeout(() => {
+      for (const [idx] of activeItems) {
+        const el = store.allImages[idx];
+        if (el && el.classList.contains('r-ph') && !(el as HTMLElement).dataset.thumb) {
+          loadPlaceholderImage(el as HTMLElement);
+        }
+      }
+    }, 200);
+  }
+
   function getScrollOffset(): number {
     return isVertical() ? viewport.scrollTop : viewport.scrollLeft;
   }
@@ -355,7 +377,8 @@ export function createThumbnailPanel(
       lastCenteredIndex = store.currentImageIndex;
     }
     renderVisibleItems();
-    
+    triggerFallbackLoadForVisible();
+
     const displayLabel = `${store.imageOffset + store.currentImageIndex + 1} / ${store.imageOffset + store.allImages.length}`;
     counter.textContent = displayLabel;
   }
@@ -368,6 +391,7 @@ export function createThumbnailPanel(
     requestAnimationFrame(() => {
       scrollRafPending = false;
       renderVisibleItems();
+      triggerFallbackLoadForVisible();
 
       if (isProgrammaticScroll) {
         isProgrammaticScroll = false;
