@@ -371,6 +371,16 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
           h: dim.h,
         } as any;
       } else {
+        // In scroll mode, the waterfall may have already created a real <img> that's
+        // loading or will load soon (lazy-load observer, thumbnail panel fallback).
+        // Reuse that element's byte-load chain instead of spinning up a second one
+        // (throwaway new Image() below) — the existing chain has its own retry ladder,
+        // and when it completes, sp-image-loaded triggers refreshSlideContent. Starting
+        // a second chain doubles the retry storm (2 × 6 attempts = 12+ requests for one
+        // failing image), overloads the node, and triggers abuse limits. Non-scroll mode
+        // or still-placeholder elements proceed with the reader's own fetch as before.
+        const isWaterfallImage = store.settings.scrollMode && el.tagName === 'IMG';
+
         e.itemData = {
           src: '', // Empty src triggers loading state
           msrc,
@@ -378,7 +388,10 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
           h: dim.h,
         } as any;
 
-        if (!fetchingState.has(viewerUrl) && viewerUrl) {
+        // Only start the reader's own fetch when the element is still a placeholder
+        // (waterfall hasn't taken over yet) or we're in non-scroll mode (reader is the
+        // only loader). If the waterfall's <img> is already loading, trust its chain.
+        if (!isWaterfallImage && !fetchingState.has(viewerUrl) && viewerUrl) {
           fetchingState.set(viewerUrl, 'resolving');
           if (pswp && pswp.currIndex === e.index) {
              hud.show({ status: 'loading', text: i18n.resolvingImage });

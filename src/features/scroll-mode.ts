@@ -32,7 +32,15 @@ let lazyLoadObserver: IntersectionObserver | null = null;
 // loads, scroll-mode lazy-load) used to each fire their own network request for
 // the same image, doubling load on the host. Now the first caller's in-flight
 // promise is shared; later callers await it instead of issuing a second fetch.
+//
+// Two maps because `force` (a byte-load retry after a dead node) must bypass the
+// resolvedUrls cache to get a *fresh* node — but concurrent force retries of the
+// SAME url should still share one request rather than each hammer the already-
+// failing node (the retry storm that overloads a hath node into 0-byte replies).
+// So: force retries de-dupe among themselves (inFlightForce), and a plain caller
+// may piggyback on either map (any pending resolve yields a valid src).
 const inFlight = new Map<string, Promise<{ src: string; nl?: string } | null>>();
+const inFlightForce = new Map<string, Promise<{ src: string; nl?: string } | null>>();
 
 export function prefetchImageUrl(url: string, nlToken?: string, force = false, priority = 0): Promise<{ src: string; nl?: string } | null> {
   if (!force && store.resolvedUrls.has(url)) {
@@ -41,17 +49,27 @@ export function prefetchImageUrl(url: string, nlToken?: string, force = false, p
   const adapter = store.activeAdapter;
   if (!adapter) return Promise.resolve(null);
 
-  // A `force` retry (new nl token after a dead node) must issue a fresh request,
-  // never reuse a stale in-flight one. Non-force callers share the pending promise
-  // and, if a higher-priority caller arrives, nudge the limiter to run it sooner.
   if (!force) {
-    const pending = inFlight.get(url);
+    // A plain caller can share any pending resolve (force or not); both yield a
+    // valid fresh src. Prefer a force task if one's running (it's the freshest).
+    const pending = inFlightForce.get(url) || inFlight.get(url);
     if (pending) {
       if (adapter.bumpPriority) adapter.bumpPriority(url);
       return pending;
     }
+  } else {
+    // A force retry only shares another in-flight *force* request — never a plain
+    // one (which might resolve from a stale/cached path). This collapses the N
+    // concurrent retries of one failing image (reader chain + waterfall chain +
+    // prefetch) down to a single network request.
+    const pendingForce = inFlightForce.get(url);
+    if (pendingForce) {
+      if (adapter.bumpPriority) adapter.bumpPriority(url);
+      return pendingForce;
+    }
   }
 
+  const map = force ? inFlightForce : inFlight;
   const task = (async () => {
     try {
       const res = await adapter.resolveImage(url, nlToken, priority);
@@ -63,11 +81,11 @@ export function prefetchImageUrl(url: string, nlToken?: string, force = false, p
     } catch (err) {
       return null;
     } finally {
-      inFlight.delete(url);
+      map.delete(url);
     }
   })();
 
-  inFlight.set(url, task);
+  map.set(url, task);
   return task;
 }
 
