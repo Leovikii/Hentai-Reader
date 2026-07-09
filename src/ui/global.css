@@ -28,6 +28,16 @@ html.scroll-mode #gdt {
   margin-bottom: 60px;
 }
 
+/* While the reader is open in scroll mode, the underlying waterfall is still
+   laid out (we need its geometry for start-index calc on open and
+   scrollIntoView on close), but must not paint: otherwise the page scroll
+   resetting toward the top flashes the first images behind the PhotoSwipe
+   overlay for a frame before it covers them, and any animated WebPs there keep
+   decoding behind the overlay. visibility:hidden keeps geometry, kills paint. */
+html.hr-reader-open .page-batch {
+  visibility: hidden;
+}
+
 .r-img {
   display: block;
   width: auto;

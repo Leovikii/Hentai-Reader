@@ -176,7 +176,15 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
     // the reader's prefetch strategy. (overflow:hidden freezes the viewport so
     // intersections stop firing anyway, but relying on that side-effect is fragile.)
     // Only meaningful in scroll mode — non-scroll placeholders are never observed.
-    if (store.settings.scrollMode) pauseLazyLoad();
+    if (store.settings.scrollMode) {
+      pauseLazyLoad();
+      // Hide the underlying waterfall so the scroll-to-top that happens as the
+      // reader opens can't flash the first images behind the overlay for a frame
+      // (most visible on 18comic, which is force-scroll). Set synchronously so the
+      // next paint already has it hidden. Geometry is preserved (visibility, not
+      // display) for the close() scrollIntoView.
+      document.documentElement.classList.add('hr-reader-open');
+    }
 
     // Force re-centering on the current image. Without this, lastCenteredIndex
     // would persist from the previous session, and if we re-open at the same
@@ -637,6 +645,9 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
     }
 
     if (store.settings.scrollMode) {
+      // Reveal the waterfall again (hidden on open to prevent the scroll-to-top flash).
+      document.documentElement.classList.remove('hr-reader-open');
+
       // Reader is closing back into the live waterfall — resume lazy-load so
       // scrolling past the current position loads images again. disconnect()
       // cleared the watch list, so this re-observes every still-pending placeholder.
