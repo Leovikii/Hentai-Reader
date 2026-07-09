@@ -20,8 +20,8 @@ export default defineConfig({
         icon: `data:image/png;base64,${iconBase64}`,
 
         description: {
-          '': 'A generalized multi-site reading framework. Provides an enhanced reading experience with infinite scroll, full-screen reader mode, and smart image loading for E-Hentai, 18comic, 4KHD, etc.',
-          'zh-CN': '多站点通用阅读框架，为 E-Hentai、18comic、4KHD 等提供无限滚动、全屏阅读模式、智能预取与硬件加速解码',
+          '': 'A high-performance universal reader for image galleries, now with mobile and touch device support, plus infinite scroll, immersive reader mode, and smart image loading, with ongoing multi-site support (E-Hentai, 18comic, 4KHD).',
+          'zh-CN': '面向图库的高性能通用阅读器，现已适配移动端与触控设备。支持无限卷轴、沉浸式阅读器与智能图片加载，多网站持续适配（E-Hentai、禁漫天堂、4KHD）',
         },
         author: 'Leovikii',
         updateURL: 'https://github.com/Leovikii/Hentai-Reader/releases/latest/download/hentai-reader.user.js',

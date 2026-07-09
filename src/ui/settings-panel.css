@@ -275,12 +275,12 @@
 
 
 :root.hr-mobile .settings-sheet-header {
-  height: 48px;
-  margin-bottom: 16px;
+  height: 40px;
+  margin-bottom: 10px;
 }
 
 :root.hr-mobile .settings-title {
-  font-size: 18px;
+  font-size: 17px;
 }
 
 :root.hr-mobile .settings-close-btn {
@@ -293,11 +293,12 @@
   height: 20px;
 }
 
+/* Tighter vertical rhythm: keep label and control on one row (no wrap) so each
+   item is one control-height tall, not two. Controls stay >=44px hit targets. */
 :root.hr-mobile .settings-item {
-  margin-bottom: 24px;
-  font-size: 16px;
+  margin-bottom: 14px;
+  font-size: 15px;
   font-weight: 600;
-  flex-wrap: wrap;
   gap: 12px;
 }
 
@@ -306,21 +307,21 @@
 }
 
 :root.hr-mobile .toggle-switch {
-  width: 52px;
-  height: 30px;
-  border-radius: 15px;
+  width: 48px;
+  height: 28px;
+  border-radius: 14px;
   flex-shrink: 0;
 }
 
 :root.hr-mobile .toggle-slider {
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   top: 2px;
   left: 2px;
 }
 
 :root.hr-mobile .toggle-switch.on .toggle-slider {
-  left: 24px;
+  left: 22px;
 }
 
 :root.hr-mobile .stepper-control {
@@ -328,23 +329,23 @@
 }
 
 :root.hr-mobile .stepper-btn {
-  width: 40px;
-  height: 36px;
+  width: 44px;
+  height: 34px;
   font-size: 20px;
   font-weight: 400;
 }
 
 :root.hr-mobile .interval-input {
-  width: 56px;
-  height: 36px;
-  font-size: 18px;
+  width: 52px;
+  height: 34px;
+  font-size: 17px;
   font-weight: 600;
 }
 
 :root.hr-mobile .segment-control {
-  padding: 4px;
-  gap: 4px;
-  border-radius: 12px;
+  padding: 3px;
+  gap: 3px;
+  border-radius: 10px;
   display: flex;
   flex: 1;
   min-width: 180px;
@@ -352,7 +353,7 @@
 
 :root.hr-mobile .segment-item {
   flex: 1;
-  padding: 8px 6px;
+  padding: 7px 6px;
   font-size: 14px;
   border-radius: 8px;
   font-weight: 600;
@@ -364,5 +365,5 @@
 }
 
 :root.hr-mobile .settings-bottom-sheet {
-  padding: 0 24px 24px;
+  padding: 0 20px 20px;
 }
