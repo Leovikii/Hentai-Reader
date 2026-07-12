@@ -1,7 +1,15 @@
 /* Theme */
 :root {
-  --accent: #F596AA;
-  --accent-hover: #F7ABBE;
+  --hr-accent: #F596AA;
+  --hr-accent-hover: #F7ABBE;
+}
+
+@keyframes hr-spin {
+  100% { transform: rotate(360deg); }
+}
+
+.hr-spinner {
+  animation: hr-spin 1s linear infinite;
 }
 
 /* Base styles — only applied in scroll mode */

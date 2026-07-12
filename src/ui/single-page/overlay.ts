@@ -27,6 +27,7 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
   let isReinitializing = false;
   let hasNavigatedInReader = false;
   let lastNavigatedIndex = -1;
+  let overflowSnapshot: { documentElement: string; body: string } | null = null;
 
   // Sync our `store.allImages` with the DOM placeholders
   function syncImages(): void {
@@ -156,6 +157,10 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
     store.currentImageIndex = startIndex;
     isActive = true;
 
+    overflowSnapshot = {
+      documentElement: document.documentElement.style.overflow,
+      body: document.body.style.overflow,
+    };
     document.documentElement.style.overflow = 'hidden';
     document.body.style.overflow = 'hidden';
 
@@ -575,9 +580,11 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
           order: 5,
           onInit: (el, pswpInstance) => {
             el.className = 'pswp__counter'; // Use native class for styling
-            pswpInstance.on('change', () => {
+            const updateCounter = () => {
               el.innerHTML = `${store.imageOffset + pswpInstance.currIndex + 1} / ${store.imageOffset + store.allImages.length}`;
-            });
+            };
+            updateCounter();
+            pswpInstance.on('change', updateCounter);
           }
         });
       }
@@ -673,8 +680,11 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
 
     prefetch.clear();
 
-    document.documentElement.style.overflow = '';
-    document.body.style.overflow = '';
+    if (overflowSnapshot) {
+      document.documentElement.style.overflow = overflowSnapshot.documentElement;
+      document.body.style.overflow = overflowSnapshot.body;
+      overflowSnapshot = null;
+    }
 
     store.emit('readerModeChanged');
 

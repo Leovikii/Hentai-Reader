@@ -85,14 +85,14 @@
 }
 
 .bm-mode-btn {
-  background: var(--accent);
+  background: var(--hr-accent);
   width: 48px;
   height: 48px;
   box-shadow: 0 2px 8px rgba(245, 150, 170, 0.4);
 }
 
 .bm-mode-btn:hover {
-  background: var(--accent-hover);
+  background: var(--hr-accent-hover);
   box-shadow: 0 4px 12px rgba(245, 150, 170, 0.6);
   transform: scale(1.05);
 }

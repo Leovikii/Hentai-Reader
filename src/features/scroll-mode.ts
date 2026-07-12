@@ -265,8 +265,7 @@ export function processBatch(links: PageLink[], pIndex: number, container?: HTML
     placeholder.innerHTML = `
       <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; transform: translateY(-20px);">
         <div style="display: flex; align-items: center; gap: 10px; background: rgba(20, 20, 20, 0.8); border: 1px solid rgba(255, 255, 255, 0.1); padding: 10px 20px; border-radius: 30px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5); backdrop-filter: blur(8px); margin-bottom: 16px;">
-          <style>@keyframes sp-spin { 100% { transform: rotate(360deg); } }</style>
-          <svg style="color: #F596AA; width: 20px; height: 20px; animation: sp-spin 1s linear infinite;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <svg class="hr-spinner" style="color: #F596AA; width: 20px; height: 20px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
             <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
           </svg>
           <div style="font-size: 15px; color: #f3f4f6; font-weight: 500; letter-spacing: 0.5px;">Loading...</div>

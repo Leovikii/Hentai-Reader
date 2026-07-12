@@ -1,4 +1,3 @@
-import 'virtual:uno.css';
 import 'photoswipe/style.css';
 import './ui/global.css';
 import { store } from './state/store';

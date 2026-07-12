@@ -5,6 +5,7 @@ import { CFG } from '../../state/config';
 import { store } from '../../state/store';
 
 const parser = new DOMParser();
+const PAGE_FETCH_PRIORITY = 50;
 
 /**
  * All E-Hentai network requests funnel through `ehLimiter` so we never burst
@@ -173,7 +174,7 @@ export const EHentaiAdapter: SiteAdapter = {
   async fetchPage(url: string) {
     // Page HTML is user-blocking (nothing renders until it arrives), so give it
     // priority over bulk image-node resolves to keep navigation snappy.
-    const response = await limitedFetch(url, 10);
+    const response = await limitedFetch(url, PAGE_FETCH_PRIORITY);
     if (!response.ok) throw new Error('Failed to fetch page');
     const html = await response.text();
     const doc = parser.parseFromString(html, 'text/html');

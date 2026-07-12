@@ -150,6 +150,7 @@ export const Comic18Adapter: SiteAdapter = {
 
   fetchPage: async (url: string): Promise<{ links: PageLink[]; nextUrl: string | null; prevUrl: string | null }> => {
     const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to fetch page: HTTP ${res.status}`);
     const html = await res.text();
     const doc = new DOMParser().parseFromString(html, 'text/html');
 

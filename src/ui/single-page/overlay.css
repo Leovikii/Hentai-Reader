@@ -295,7 +295,7 @@
 }
 
 .sp-thumb-item.sp-thumb-active {
-  border-color: var(--accent);
+  border-color: var(--hr-accent);
 }
 
 .sp-thumb-img {
