@@ -17,5 +17,5 @@
       "$": ["./node_modules/vite-plugin-monkey/dist/client/index.d.ts"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "tests"]
 }

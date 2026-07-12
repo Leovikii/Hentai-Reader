@@ -20,6 +20,7 @@ export function createProgressTrack(
   let isDragging = false;
   let dragStartPos = 0;
   let thumbStartPos = 0;
+  let previousBodyUserSelect: string | null = null;
 
   function isVertical() {
     const pos = store.settings.thumbnailPosition;
@@ -103,6 +104,7 @@ export function createProgressTrack(
       dragStartPos = e.clientX;
       thumbStartPos = progressThumb.offsetLeft;
     }
+    previousBodyUserSelect = document.body.style.userSelect;
     document.body.style.userSelect = 'none';
   };
 
@@ -123,13 +125,16 @@ export function createProgressTrack(
     }
   });
 
-  document.addEventListener('mouseup', () => {
-    if (isDragging) {
-      isDragging = false;
-      document.body.style.userSelect = '';
-      wakeUp();
-    }
-  });
+  function endProgressDrag(wake = true): void {
+    if (!isDragging) return;
+    isDragging = false;
+    document.body.style.userSelect = previousBodyUserSelect ?? '';
+    previousBodyUserSelect = null;
+    if (wake) wakeUp();
+  }
+
+  document.addEventListener('mouseup', () => endProgressDrag());
+  window.addEventListener('blur', () => endProgressDrag(false));
 
   progressThumb.onclick = (e) => e.stopPropagation();
 

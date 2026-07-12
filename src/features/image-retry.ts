@@ -1,5 +1,5 @@
 import { CFG } from '../state/config';
-import { prefetchImageUrl } from './scroll-mode';
+import { prefetchImageUrl } from '../services/image-resolver';
 
 /**
  * Shared image retry policy for both loading paths (scroll-mode waterfall and

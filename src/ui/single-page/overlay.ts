@@ -13,6 +13,7 @@ import { createWheelPager } from './wheel-pager';
 import { createAutoPlay } from './auto-play';
 import { createStatusHUD } from '../components/status-hud';
 import { i18n } from '../../utils/i18n';
+import { LOAD_PRIORITY } from '../../state/load-policy';
 
 import type { SinglePageModeHandle } from '../../types';
 
@@ -60,10 +61,16 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
 
   function loadNextPage(): void {
     if (!store.nextUrl || store.isFetching) return;
+    const requestedUrl = store.nextUrl;
+    if (store.loadedPageUrls.has(requestedUrl)) {
+      store.nextUrl = null;
+      return;
+    }
     store.isFetching = true;
     hud.show({ status: 'loading', text: i18n.downloading });
-    store.activeAdapter!.fetchPage(store.nextUrl).then(({ links, nextUrl, prevUrl }) => {
-      deps.onLoadNextPage(links, nextUrl, prevUrl);
+    store.activeAdapter!.fetchPage(requestedUrl).then(({ links, nextUrl, prevUrl }) => {
+      if (links.length === 0) throw new Error('Fetched page has no images');
+      deps.onLoadNextPage(links, nextUrl === requestedUrl ? null : nextUrl, prevUrl);
       syncImages();
       store.isFetching = false;
       hud.hide();
@@ -77,11 +84,17 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
 
   function loadPrevPage(): void {
     if (!store.prevUrl || store.isFetching) return;
+    const requestedUrl = store.prevUrl;
+    if (store.loadedPageUrls.has(requestedUrl)) {
+      store.prevUrl = null;
+      return;
+    }
     store.isFetching = true;
     hud.show({ status: 'loading', text: i18n.downloading });
-    store.activeAdapter!.fetchPage(store.prevUrl).then(({ links, prevUrl }) => {
+    store.activeAdapter!.fetchPage(requestedUrl).then(({ links, prevUrl }) => {
+      if (links.length === 0) throw new Error('Fetched page has no images');
       const prevCount = links.length;
-      deps.onLoadPrevPage(links, prevUrl ?? null);
+      deps.onLoadPrevPage(links, prevUrl === requestedUrl ? null : prevUrl ?? null);
 
       isReinitializing = true;
       store.currentImageIndex += prevCount;
@@ -444,7 +457,7 @@ export function createSinglePageOverlay(deps: SinglePageOverlayDeps): SinglePage
           if (pswp && pswp.currIndex === e.index) refreshHudForCurrent();
           // Closer to the current index = higher priority (current slide first).
           const distance = pswp ? Math.abs(e.index - pswp.currIndex) : 0;
-          const priority = 100 - distance;
+          const priority = LOAD_PRIORITY.foreground - distance;
           // myPswp pins this instance (close+reopen swaps pswp); findLive re-locates
           // the slide by URL since loadPrevPage prepends and shifts every index.
           const myPswp = pswp;

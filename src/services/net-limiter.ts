@@ -1,5 +1,3 @@
-import { CFG } from '../state/config';
-
 /**
  * Experience-first network limiter.
  *
@@ -21,13 +19,31 @@ interface Job<T> {
   seq: number;
 }
 
+export interface LimiterClock {
+  now: () => number;
+  setTimeout: (callback: () => void, delay: number) => ReturnType<typeof setTimeout>;
+  clearTimeout: (id: ReturnType<typeof setTimeout>) => void;
+}
+
+const systemClock: LimiterClock = {
+  now: () => Date.now(),
+  setTimeout: (callback, delay) => setTimeout(callback, delay),
+  clearTimeout: (id) => clearTimeout(id),
+};
+
 export class NetLimiter {
   private queue: Job<unknown>[] = [];
   private active = 0;
   private pausedUntil = 0;
   private seq = 0;
+  private pauseTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly maxConcurrent: number;
+  private readonly clock: LimiterClock;
 
-  constructor(private maxConcurrent: number) {}
+  constructor(maxConcurrent: number, clock: LimiterClock = systemClock) {
+    this.maxConcurrent = maxConcurrent;
+    this.clock = clock;
+  }
 
   /**
    * Schedule a network task. Higher `priority` runs first when a slot frees;
@@ -48,9 +64,10 @@ export class NetLimiter {
 
   /** Back off globally for `ms` — used when the server returns 429/503. */
   pauseFor(ms: number): void {
-    const until = Date.now() + ms;
-    if (until > this.pausedUntil) this.pausedUntil = until;
-    this.pump();
+    const until = this.clock.now() + ms;
+    if (until <= this.pausedUntil) return;
+    this.pausedUntil = until;
+    this.schedulePauseWake(true);
   }
 
   /**
@@ -74,10 +91,15 @@ export class NetLimiter {
   }
 
   private pump(): void {
-    const now = Date.now();
+    const now = this.clock.now();
     if (now < this.pausedUntil) {
-      setTimeout(() => this.pump(), this.pausedUntil - now + 10);
+      this.schedulePauseWake();
       return;
+    }
+
+    if (this.pauseTimer !== null) {
+      this.clock.clearTimeout(this.pauseTimer);
+      this.pauseTimer = null;
     }
 
     while (this.active < this.maxConcurrent && this.queue.length > 0) {
@@ -93,16 +115,24 @@ export class NetLimiter {
       const job = this.queue.splice(bestIdx, 1)[0];
       this.active++;
 
-      job.run().then(
+      Promise.resolve().then(() => job.run()).then(
         value => { job.resolve(value); this.active--; this.pump(); },
         reason => { job.reject(reason); this.active--; this.pump(); },
       );
     }
   }
-}
 
-/**
- * Shared limiter for E-Hentai/ExHentai page + image-node requests. These are the
- * requests that trigger abuse detection, so they all funnel through one ceiling.
- */
-export const ehLimiter = new NetLimiter(CFG.maxConcurrent);
+  private schedulePauseWake(reschedule = false): void {
+    if (reschedule && this.pauseTimer !== null) {
+      this.clock.clearTimeout(this.pauseTimer);
+      this.pauseTimer = null;
+    }
+    if (this.pauseTimer !== null) return;
+
+    const delay = Math.max(0, this.pausedUntil - this.clock.now() + 10);
+    this.pauseTimer = this.clock.setTimeout(() => {
+      this.pauseTimer = null;
+      this.pump();
+    }, delay);
+  }
+}

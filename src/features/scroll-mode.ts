@@ -1,5 +1,6 @@
 import { store } from '../state/store';
 import { CFG } from '../state/config';
+import { LOAD_PRIORITY } from '../state/load-policy';
 import type { PageLink } from '../types/site-adapter';
 import { showToast } from '../utils/dom';
 import { resolveImageWithRetry, attachImageRetry } from './image-retry';
@@ -26,68 +27,6 @@ function setErrorState(
 }
 
 let lazyLoadObserver: IntersectionObserver | null = null;
-
-// De-dupe concurrent resolves of the same URL. Multiple independent callers
-// (itemData for the current slide, directional prefetch, thumbnail-triggered
-// loads, scroll-mode lazy-load) used to each fire their own network request for
-// the same image, doubling load on the host. Now the first caller's in-flight
-// promise is shared; later callers await it instead of issuing a second fetch.
-//
-// Two maps because `force` (a byte-load retry after a dead node) must bypass the
-// resolvedUrls cache to get a *fresh* node — but concurrent force retries of the
-// SAME url should still share one request rather than each hammer the already-
-// failing node (the retry storm that overloads a hath node into 0-byte replies).
-// So: force retries de-dupe among themselves (inFlightForce), and a plain caller
-// may piggyback on either map (any pending resolve yields a valid src).
-const inFlight = new Map<string, Promise<{ src: string; nl?: string } | null>>();
-const inFlightForce = new Map<string, Promise<{ src: string; nl?: string } | null>>();
-
-export function prefetchImageUrl(url: string, nlToken?: string, force = false, priority = 0): Promise<{ src: string; nl?: string } | null> {
-  if (!force && store.resolvedUrls.has(url)) {
-    return Promise.resolve({ src: store.resolvedUrls.get(url)! });
-  }
-  const adapter = store.activeAdapter;
-  if (!adapter) return Promise.resolve(null);
-
-  if (!force) {
-    // A plain caller can share any pending resolve (force or not); both yield a
-    // valid fresh src. Prefer a force task if one's running (it's the freshest).
-    const pending = inFlightForce.get(url) || inFlight.get(url);
-    if (pending) {
-      if (adapter.bumpPriority) adapter.bumpPriority(url);
-      return pending;
-    }
-  } else {
-    // A force retry only shares another in-flight *force* request — never a plain
-    // one (which might resolve from a stale/cached path). This collapses the N
-    // concurrent retries of one failing image (reader chain + waterfall chain +
-    // prefetch) down to a single network request.
-    const pendingForce = inFlightForce.get(url);
-    if (pendingForce) {
-      if (adapter.bumpPriority) adapter.bumpPriority(url);
-      return pendingForce;
-    }
-  }
-
-  const map = force ? inFlightForce : inFlight;
-  const task = (async () => {
-    try {
-      const res = await adapter.resolveImage(url, nlToken, priority);
-      if (res && res.src) {
-        store.resolvedUrls.set(url, res.src);
-        return res;
-      }
-      return null;
-    } catch (err) {
-      return null;
-    } finally {
-      map.delete(url);
-    }
-  })();
-
-  map.set(url, task);
-  return task;
-}
 
 export function loadPlaceholderImage(placeholder: HTMLElement) {
   const url = placeholder.dataset.url!;
@@ -133,7 +72,7 @@ export function loadPlaceholderImage(placeholder: HTMLElement) {
       attachImageRetry(img, {
         viewerUrl: url,
         nl: currentNlToken,
-        priority: 20,
+        priority: LOAD_PRIORITY.byteRetry,
         shouldContinue: () => !!placeholder.parentNode || !!img.parentNode,
         onRetry: (attempt, kind) => {
           if (kind === 'node') {
@@ -232,9 +171,10 @@ export function resumeLazyLoad(): void {
 
 export function processBatch(links: PageLink[], pIndex: number, container?: HTMLElement, prepend = false, pageUrl?: string): void {
   const batchDiv = document.createElement('div');
-  batchDiv.className = 'page-batch';
+  batchDiv.className = 'hr-page-batch';
   if (pageUrl) {
     batchDiv.dataset.pageUrl = pageUrl;
+    store.loadedPageUrls.add(pageUrl);
   }
   const fragment = document.createDocumentFragment();
 
@@ -298,14 +238,20 @@ export function setupAutoScroll(): void {
 
   const pageObs = new IntersectionObserver((entries) => {
     if (entries[0].isIntersecting && store.nextUrl && !store.isFetching) {
+      const requestedUrl = store.nextUrl;
+      if (store.loadedPageUrls.has(requestedUrl)) {
+        store.nextUrl = null;
+        pageObs.disconnect();
+        return;
+      }
       store.isFetching = true;
-      store.activeAdapter!.fetchPage(store.nextUrl).then(({ links, nextUrl: nUrl }) => {
+      store.activeAdapter!.fetchPage(requestedUrl).then(({ links, nextUrl: nUrl }) => {
+        if (links.length === 0) throw new Error('Fetched page has no images');
         store.currPage++;
-        processBatch(links, store.currPage, store.activeAdapter?.getContainer() || document.querySelector('.scroll-mode .entry-content, .scroll-mode .wp-block-post-content, .scroll-mode .post-content') as HTMLElement || document.body);
+        processBatch(links, store.currPage, store.activeAdapter?.getContainer() || document.querySelector('.scroll-mode .entry-content, .scroll-mode .wp-block-post-content, .scroll-mode .post-content') as HTMLElement || document.body, false, requestedUrl);
 
-        store.nextUrl = nUrl;
+        store.nextUrl = nUrl === requestedUrl ? null : nUrl;
         store.isFetching = false;
-        store.nextPagePrefetched = false;
         if (!store.nextUrl) pageObs.disconnect();
       }).catch(() => { store.isFetching = false; });
     }

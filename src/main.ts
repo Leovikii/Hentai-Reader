@@ -9,8 +9,6 @@ import { initViewportScale } from './utils/viewport';
 
 
 (async function main() {
-  initViewportScale();
-
   const adapter = SiteManager.getAdapter(window.location.href);
   if (!adapter) {
     return;
@@ -22,6 +20,8 @@ import { initViewportScale } from './utils/viewport';
   }
   const initData = await adapter.init(document);
   if (!initData.links || initData.links.length === 0) return; // Nothing to process
+
+  initViewportScale();
 
   store.totalPage = initData.totalPage ?? 1;
   store.nextUrl = initData.nextUrl;

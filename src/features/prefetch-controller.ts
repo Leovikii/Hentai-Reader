@@ -1,5 +1,6 @@
 import { store } from '../state/store';
-import { prefetchImageUrl } from './scroll-mode';
+import { prefetchImageUrl } from '../services/image-resolver';
+import { LOAD_PRIORITY } from '../state/load-policy';
 
 /**
  * Windowed byte-prefetch controller for the PhotoSwipe reader.
@@ -59,7 +60,7 @@ export function createPrefetchController(): PrefetchController {
     // Placeholder occupies the map slot so concurrent calls don't double-fetch;
     // replaced with the real Image once resolve lands.
     downloads.set(url, new Image());
-    prefetchImageUrl(url, undefined, false, 5).then(res => {
+    prefetchImageUrl(url, undefined, false, LOAD_PRIORITY.warmup).then(res => {
       // Aborted (removed from map) while resolving, or resolve failed.
       if (!downloads.has(url)) return;
       if (!res || !res.src) { downloads.delete(url); return; }

@@ -456,11 +456,13 @@ export function createThumbnailPanel(
   let velocityX = 0;
   let velocityY = 0;
   let inertiaRaf = 0;
+  let dragPointerId: number | null = null;
 
   viewport.addEventListener('pointerdown', (e) => {
     if (e.pointerType !== 'mouse' || e.button !== 0) return;
     cancelAnimationFrame(inertiaRaf);
     isDragging = true;
+    dragPointerId = e.pointerId;
     hasDragged = false;
     startX = e.clientX;
     startY = e.clientY;
@@ -476,7 +478,7 @@ export function createThumbnailPanel(
   });
 
   window.addEventListener('pointermove', (e) => {
-    if (!isDragging) return;
+    if (!isDragging || e.pointerId !== dragPointerId) return;
     if (Math.abs(e.clientX - startX) > 5 || Math.abs(e.clientY - startY) > 5) {
       hasDragged = true;
     }
@@ -525,11 +527,18 @@ export function createThumbnailPanel(
     }
   });
 
-  window.addEventListener('pointerup', () => {
+  function endMouseDrag(withInertia: boolean): void {
     if (!isDragging) return;
     isDragging = false;
+    dragPointerId = null;
     viewport.style.cursor = '';
-    
+
+    if (!withInertia) {
+      velocityX = 0;
+      velocityY = 0;
+      return;
+    }
+
     const timeSinceLastMove = performance.now() - lastTime;
     if (timeSinceLastMove > 50) {
        velocityX = 0;
@@ -575,6 +584,14 @@ export function createThumbnailPanel(
     };
     
     inertiaRaf = requestAnimationFrame(startInertia);
+  }
+
+  window.addEventListener('pointerup', (e) => {
+    if (e.pointerId === dragPointerId) endMouseDrag(true);
+  });
+
+  window.addEventListener('pointercancel', (e) => {
+    if (e.pointerId === dragPointerId) endMouseDrag(false);
   });
 
   // Polyfill edge-pull loading for mobile touch

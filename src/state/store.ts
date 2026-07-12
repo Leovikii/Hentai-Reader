@@ -20,7 +20,7 @@ class Store {
   nextUrl: string | null = null;
   prevUrl: string | null = null;
   isFetching = false;
-  nextPagePrefetched = false;
+  loadedPageUrls = new Set<string>();
 
   // Single page state
   currentImageIndex = 0;

@@ -1,11 +1,13 @@
 import type { SiteAdapter, PageLink } from '../../types/site-adapter';
 import { q, qa } from '../../utils/dom';
-import { ehLimiter } from '../../services/net-limiter';
+import { NetLimiter } from '../../services/net-limiter';
 import { CFG } from '../../state/config';
 import { store } from '../../state/store';
+import { LOAD_PRIORITY } from '../../state/load-policy';
 
 const parser = new DOMParser();
-const PAGE_FETCH_PRIORITY = 50;
+const PAGE_FETCH_PRIORITY = LOAD_PRIORITY.pageHtml;
+const ehLimiter = new NetLimiter(CFG.maxConcurrent);
 
 /**
  * All E-Hentai network requests funnel through `ehLimiter` so we never burst
