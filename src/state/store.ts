@@ -1,6 +1,7 @@
 import { GM_setValue } from '$';
-import type { UserSettings } from '../types';
-import type { SiteAdapter } from '../types/site-adapter';
+import type { UserSettings } from './types';
+import type { SiteAdapter } from '../core/site-adapter';
+import type { GalleryItem } from '../core/gallery';
 import { loadSettings } from './config';
 
 type StoreEvent = 'settingsChanged' | 'readerModeChanged';
@@ -14,21 +15,15 @@ class Store {
 
   // Page state
   currPage = 1;
-  totalPage = 1;
   perPage = 20;
   imageOffset = 0;  // Global index of first loaded image (0-based)
   nextUrl: string | null = null;
   prevUrl: string | null = null;
   isFetching = false;
-  loadedPageUrls = new Set<string>();
+  galleryItems: GalleryItem[] = [];
 
-  // Single page state
-  currentImageIndex = 0;
-  allImages: HTMLElement[] = [];
-  autoPlayTimer: ReturnType<typeof setInterval> | null = null;
+  // Reader session flag
   autoPlay = false;  // Session-only, not persisted
-  resolvedUrls: Map<string, string> = new Map(); // Cache: placeholder/link URL -> real image URL
-  imageDimensions: Map<string, { w: number; h: number }> = new Map(); // Cache dimensions for PhotoSwipe
 
   constructor() {
     this._settings = loadSettings();
@@ -53,11 +48,16 @@ class Store {
     this.emit('settingsChanged');
   }
 
-  on(event: StoreEvent, listener: Listener): void {
+  on(event: StoreEvent, listener: Listener): () => void {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set());
     }
     this.listeners.get(event)!.add(listener);
+    return () => {
+      const listeners = this.listeners.get(event);
+      listeners?.delete(listener);
+      if (listeners?.size === 0) this.listeners.delete(event);
+    };
   }
 
   emit(event: StoreEvent): void {

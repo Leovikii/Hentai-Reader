@@ -66,6 +66,7 @@
   cursor: pointer;
   transition: all 0.2s;
   background: transparent;
+  color: #fff;
 }
 
 .bm-btn:hover {
@@ -73,11 +74,24 @@
   transform: scale(1.1);
 }
 
-.bm-btn svg {
+.bookmark-control .bm-btn svg {
   width: 24px;
   height: 24px;
-  fill: #fff;
   opacity: 0.8;
+}
+
+/* Keep icons independent from host-page SVG rules. Filled controls use the
+   button color, while Reader/scroll controls explicitly remain outline-only. */
+.bookmark-control .bm-btn svg:not([fill="none"]),
+.bookmark-control .bm-btn svg:not([fill="none"]) * {
+  fill: currentColor !important;
+  stroke: none !important;
+}
+
+.bookmark-control .bm-btn svg[fill="none"],
+.bookmark-control .bm-btn svg[fill="none"] * {
+  fill: none !important;
+  stroke: currentColor !important;
 }
 
 .bm-btn:hover svg {

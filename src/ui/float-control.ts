@@ -3,9 +3,9 @@ import { store } from '../state/store';
 import { svgReader, svgSettings, svgTop, svgScroll, svgPlay, svgPause } from '../utils/icons';
 import { createSettingsPanel } from './settings-panel';
 import { i18n } from '../utils/i18n';
-import type { SinglePageModeHandle } from '../types';
+import type { ReaderHandle } from '../reader/contracts';
 
-export function createFloatControl(spmHandle: SinglePageModeHandle): void {
+export function createFloatControl(readerHandle: ReaderHandle): void {
   const floatControl = document.createElement('div');
   floatControl.className = `bookmark-control${store.settings.showControl ? '' : ' hidden'}`;
 
@@ -27,7 +27,7 @@ export function createFloatControl(spmHandle: SinglePageModeHandle): void {
   const topBtn = document.createElement('div');
   topBtn.className = 'bm-btn bm-top-btn';
   const updateTopBtn = () => {
-    if (spmHandle.isActive()) {
+    if (readerHandle.isActive()) {
       topBtn.innerHTML = store.autoPlay ? svgPause : svgPlay;
       topBtn.title = store.autoPlay ? i18n.pause : i18n.play;
     } else {
@@ -40,7 +40,7 @@ export function createFloatControl(spmHandle: SinglePageModeHandle): void {
 
   topBtn.onclick = (e) => {
     e.stopPropagation();
-    if (spmHandle.isActive()) {
+    if (readerHandle.isActive()) {
       store.autoPlay = !store.autoPlay;
       store.emit('settingsChanged');
     } else {
@@ -60,16 +60,16 @@ export function createFloatControl(spmHandle: SinglePageModeHandle): void {
   modeBtn.title = i18n.readerMode;
   modeBtn.onclick = (e) => {
     e.stopPropagation();
-    if (spmHandle.isActive()) {
-      spmHandle.close();
+    if (readerHandle.isActive()) {
+      readerHandle.close();
     } else {
-      spmHandle.open();
+      readerHandle.open();
     }
   };
 
   // Sync button icons
   store.on('readerModeChanged', () => {
-    modeBtn.innerHTML = spmHandle.isActive() ? svgScroll : svgReader;
+    modeBtn.innerHTML = readerHandle.isActive() ? svgScroll : svgReader;
     updateTopBtn();
   });
 

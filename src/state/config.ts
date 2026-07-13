@@ -1,5 +1,5 @@
 import { GM_getValue } from '$';
-import type { AppConfig, UserSettings } from '../types';
+import type { AppConfig, UserSettings } from './types';
 
 export const CFG: AppConfig = {
   nextPage: '3000px 0px',

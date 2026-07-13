@@ -23,22 +23,29 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
-        run: npm run build
+      - name: Check and build
+        run: npm run check
 
       - name: Get Version
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         id: version
-        run: echo "VERSION=v$(node -p "require('./package.json').version")" >> $GITHUB_ENV
+        run: |
+          VERSION="v$(node -p 'require("./package.json").version')"
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+          if git rev-parse --verify --quiet "refs/tags/$VERSION" >/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Generate Changelog
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.version.outputs.exists == 'false'
         id: changelog
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
@@ -52,11 +59,11 @@ jobs:
           echo "EOF" >> $GITHUB_ENV
 
       - name: Create Release
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.version.outputs.exists == 'false'
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ env.VERSION }}
-          name: Hentai-Reader ${{ env.VERSION }}
+          tag_name: ${{ steps.version.outputs.value }}
+          name: Hentai-Reader ${{ steps.version.outputs.value }}
           body: |
             ### Changes
             ${{ env.CHANGELOG }}

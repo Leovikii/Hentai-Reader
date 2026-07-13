@@ -1,4 +1,4 @@
-import type { SiteAdapter } from '../types/site-adapter';
+import type { SiteAdapter } from '../core/site-adapter';
 import { EHentaiAdapter } from './e-hentai';
 import { FourKHDAdapter } from './4khd';
 import { Comic18Adapter } from './18comic';
