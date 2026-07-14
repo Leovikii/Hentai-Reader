@@ -1,13 +1,11 @@
 import { defineConfig } from 'vite';
 import monkey from 'vite-plugin-monkey';
-import UnoCSS from '@unocss/vite';
 import { readFileSync } from 'fs';
 
 const iconBase64 = readFileSync('src/assets/icon.png', 'base64');
 
 export default defineConfig({
   plugins: [
-    UnoCSS(),
     monkey({
       entry: 'src/main.ts',
       userscript: {

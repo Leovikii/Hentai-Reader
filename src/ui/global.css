@@ -1,7 +1,20 @@
 /* Theme */
 :root {
-  --accent: #F596AA;
-  --accent-hover: #F7ABBE;
+  --hr-accent: #F596AA;
+  --hr-accent-hover: #F7ABBE;
+}
+
+html.hr-instant-scroll,
+html.hr-instant-scroll body {
+  scroll-behavior: auto !important;
+}
+
+@keyframes hr-spin {
+  100% { transform: rotate(360deg); }
+}
+
+.hr-spinner {
+  animation: hr-spin 1s linear infinite;
 }
 
 /* Base styles — only applied in scroll mode */
@@ -20,7 +33,7 @@ html.scroll-mode #gdt {
 }
 
 /* Scroll mode */
-.page-batch {
+.hr-page-batch {
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -34,7 +47,7 @@ html.scroll-mode #gdt {
    resetting toward the top flashes the first images behind the PhotoSwipe
    overlay for a frame before it covers them, and any animated WebPs there keep
    decoding behind the overlay. visibility:hidden keeps geometry, kills paint. */
-html.hr-reader-open .page-batch {
+html.hr-reader-open .hr-page-batch {
   visibility: hidden;
 }
 
@@ -65,7 +78,9 @@ html.hr-reader-open .page-batch {
   flex-direction: column;
   gap: 10px;
   content-visibility: auto;
-  contain-intrinsic-size: auto 100vh;
+  /* Match the real fallback height so a far jump cannot collapse several
+     viewport-sized estimates when placeholders become render-relevant. */
+  contain-intrinsic-size: auto 400px;
 }
 
 .r-ph.loading {

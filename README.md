@@ -1,6 +1,6 @@
 # <img src="src/assets/icon.png" width="48" height="48" align="top" /> Hentai Reader (Formerly E-Hentai Plus)
 
-A high-performance universal reader for image galleries. Now with mobile and touch device support, and ongoing adaptation for more sites.
+A high-performance universal reader for image galleries, built for mobile and touch with an extensible multi-site architecture.
 
 Currently supported (more on the way):
 - E-Hentai / ExHentai
@@ -11,7 +11,7 @@ Currently supported (more on the way):
 
 ## Why Hentai Reader
 
-- **Built for performance.** DOM virtualization unmounts off-screen images and directional prefetching loads what you're about to see, so thousands of high-resolution pages scroll at a stable frame rate without exhausting memory.
+- **Built for performance.** Viewport-aware loading, browser-native off-screen rendering containment, bounded shared caches, and directional prefetching keep long galleries responsive without duplicate downloads.
 - **Works everywhere.** Full desktop controls (wheel paging, keyboard, click zones) alongside first-class touch support — tap zones, swipe paging, pinch-zoom, and an auto-hiding UI — so it feels native on both.
 - **One reader, every site.** A single adapter-based core delivers the same reading experience across sites; new sites plug in without touching the reader.
 - **Resilient by design.** Automatic retry with node switching recovers failed loads, and a load-aware scroll gate keeps you from overshooting onto still-loading pages.
@@ -20,9 +20,9 @@ Currently supported (more on the way):
 
 - **Infinite Scroll Mode** — Converts multi-page galleries into a continuous vertical scroll with auto-prefetching, while preserving native page metadata (tags, titles, comments). Toggle on the fly with instant reload.
 - **Immersive Reader Mode** — A distraction-free, full-screen viewer with keyboard, wheel, tap, and swipe navigation, plus a virtual-scrolling thumbnail panel for quick jumps.
-- **Performance Engine** — DOM virtualization and smart memory recycling hold a stable frame rate through thousands of high-resolution images without memory overflow.
+- **Performance Engine** — Viewport-aware loading, `content-visibility`, lease-protected shared image tasks, and bounded LRU caches avoid duplicate work while allowing the browser to reclaim off-screen rendering resources.
 - **Desktop & Touch** — Full desktop controls (wheel paging, keyboard, click zones) plus first-class touch: edge tap-to-page, swipe paging, pinch-zoom, and a timed auto-hiding UI for one-handed reading.
-- **18comic Decoding Engine** — HTML5 hardware-accelerated descrambling with fast JPEG reconstruction, decoding 18comic's scrambled images with minimal CPU load and no browser freezes.
+- **18comic Decoding Engine** — Canvas-based descrambling runs through the shared priority scheduler, reuses managed image tasks, and releases Bitmap, Canvas, Blob, and Object URL resources predictably.
 - **Smart Anti-Blocking** — Domain feature-matching and redirect following keep the script working on sites like 4KHD that frequently change domains.
 - **Robust Loading** — Automatic retry with hath-node switching for failed images, a unified status HUD for load progress, and a load-aware scroll gate that stops paging at unloaded pages.
 - **Auto Play** — Adjustable slideshow mode for hands-free reading.
@@ -34,10 +34,14 @@ Currently supported (more on the way):
 
 ## Build from Source
 
+Requires Node.js 22.18 or newer.
+
 ```bash
 npm install
 npm run dev    # Development (hot reload)
 npm run build  # Production
+npm test       # Regression tests
+npm run check  # Typecheck, tests, and production build
 ```
 
 Output: `dist/hentai-reader.user.js`
@@ -45,38 +49,50 @@ Output: `dist/hentai-reader.user.js`
 ## Tech Stack
 
 - **TypeScript** + **Vite** + **vite-plugin-monkey**
-- **PhotoSwipe** (reader) + **UnoCSS**
+- **PhotoSwipe** reader driver with project-owned CSS
+- **Node.js test runner** for adapter, loading lifecycle, scheduling, and architecture boundary tests
 
 ## Project Structure
 
 ```
 src/
 ├── main.ts                       # Entry point
+├── app/                          # Application composition and dependency wiring
+├── core/                         # Gallery, image, and site contracts
+├── reader/                       # Reader controller, drivers, shell, and UI
+│   ├── controllers/              # Image, prefetch, pagination, wheel, autoplay
+│   ├── drivers/                  # PhotoSwipe integration boundary
+│   └── shell/                    # Status and virtualized thumbnail UI
+├── scroll/                       # Scroll lifecycle, navigation, and image events
+├── services/                     # Shared loading, retry, scheduling, thumbnails
 ├── sites/                        # Per-site adapters (add a site here)
 │   ├── site-manager.ts           # Adapter selection
 │   ├── e-hentai/ · 18comic/ · 4khd/
-├── features/
-│   ├── scroll-mode.ts            # Infinite scroll mode
-│   ├── single-page-mode.ts       # Reader mode facade
-│   ├── image-retry.ts            # Shared resolve/byte-load retry
-│   └── prefetch-controller.ts    # Directional prefetching
-├── services/
-│   ├── net-limiter.ts            # Concurrency & priority limiter
-│   └── page-parser.ts            # Page URL and range parsing
+│   └── _template/                # New-site starter adapter
 ├── ui/
 │   ├── float-control.ts          # Floating controls
-│   ├── settings-panel.ts         # Settings panel
-│   ├── components/status-hud.ts  # Load status HUD
-│   └── single-page/
-│       ├── overlay.ts            # Reader overlay (PhotoSwipe)
-│       ├── wheel-pager.ts        # Velocity wheel paging + load gate
-│       ├── auto-play.ts          # Auto-play logic
-│       └── thumbnail-panel/      # Virtual-scrolling thumbnails
+│   └── settings-panel.ts         # Settings panel
 ├── state/                        # config.ts · store.ts
-├── types/                        # index.ts · site-adapter.ts
-└── utils/                        # dom · i18n · icons · viewport
+│   └── types.ts                  # Application settings/config types
+└── utils/                        # i18n · icons · viewport
+
+tests/                            # Regression and architecture contract tests
+docs/                             # Architecture, new-site guide, and backlog
 ```
 
 ## License
 
 MIT
+
+## Development Documentation
+
+The architecture is organized around `src/core/`, `src/services/`, `src/reader/`,
+`src/scroll/`, and site adapters under `src/sites/`.
+
+The completed refactor centralizes resolve, materialize, retry, cache, lease, and
+resource ownership. Reader UI, PhotoSwipe integration, scroll lifecycle, and site
+adapters are separated by explicit contracts so fixes remain local to their owner.
+
+- [Final refactor plan](docs/final-refactor-plan.md)
+- [New site adapter guide](docs/new-site-guide.md)
+- [Deferred refactor backlog](docs/refactor-backlog.md)

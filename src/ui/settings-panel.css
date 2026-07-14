@@ -161,7 +161,7 @@
 }
 
 .toggle-switch.on {
-  background: var(--accent);
+  background: var(--hr-accent);
 }
 
 .toggle-slider {
