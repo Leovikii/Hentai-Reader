@@ -2,7 +2,26 @@
 
 ## Derived thumbnails for sites without preview assets
 
-Status: non-blocking UX follow-up after the reader/UI extraction.
+Status: completed and accepted for the v3.2.0 release.
+
+The architecture refactor and the final thumbnail policy are complete. Real-site
+acceptance passed on 18comic, E-Hentai and 4KHD.
+
+Implementation state:
+
+- The previous 200 ms / three-item fallback through scroll placeholders has
+  been removed.
+- Explicit panel scrolling now arms one 300 ms settled batch containing every
+  actually visible missing preview, ordered centre-out with concurrency two.
+- Thumbnail leases use the shared image lifecycle directly and release after a
+  bounded 300 px Canvas is cached. Reader navigation reuses/promotes the same
+  active or cached image task.
+- Renewed scrolling, Reader navigation and Reader close release stale work;
+  visual panel auto-hide lets the already-confirmed finite batch finish.
+- Unit tests cover filtering, ordering, concurrency, cancellation and shared
+  Reader reuse. Local browser smoke verified zero pre-settle work, ten visible
+  loading states, peak thumbnail concurrency two, full batch completion after
+  auto-hide, and no duplicate load after selecting a preloaded item.
 
 18comic does not expose cheap thumbnail assets. The panel currently shows a
 numbered placeholder until the full image has been loaded through another
@@ -11,20 +30,52 @@ preview would require a full download, anti-scramble decode and Blob allocation.
 
 Target policy:
 
-- Reuse loaded assets and cache a canvas thumbnail capped near 300 px.
-- Keep numbered placeholders for missing assets.
-- After panel scrolling settles for 200-300 ms, request only the 1-2 items
-  nearest the panel viewport center at thumbnail priority.
-- Release/cancel stale thumbnail leases when panel scrolling continues.
-- Promote and reuse the same request when the user selects an item.
-- Never apply this fallback to adapters that provide URL or sprite previews.
+- Keep URL and Sprite preview loading unchanged. The shared fallback applies
+  automatically only to `none` and `derived` preview descriptors, without a
+  site-name branch.
+- Do not start full-image preview work when Reader opens, the panel appears or
+  the panel is positioned programmatically. Only explicit user panel scrolling
+  can arm fallback preloading.
+- After scrolling remains stable for 300 ms, snapshot every actually visible
+  item (excluding the virtualized buffer) and mark the whole missing-preview
+  batch as loading.
+- Queue the complete visible batch from the viewport centre outwards. Start at
+  most two thumbnail jobs concurrently; completed items may render
+  progressively instead of waiting for the slowest item.
+- Acquire full images directly from the shared image lifecycle with thumbnail
+  intent. Do not materialize a scroll placeholder solely to obtain a preview.
+- Reuse the same active/cached resolve, download, descramble and Blob when the
+  Reader, scroll view or prefetch consumer requests that item.
+- Cache the downscaled Canvas near 300 px in the existing bounded thumbnail
+  LRU, then release the full-image thumbnail lease.
+- On renewed scrolling, Reader navigation or Reader close, discard queued work
+  and release stale thumbnail-only leases. Visual panel auto-hide does not
+  cancel an already-confirmed finite batch. Shared work continues when another
+  consumer still owns it.
 
 Acceptance checks:
 
-- Scrubbing the panel does not create an unbounded decode queue.
-- A settled panel gradually fills only its centered previews.
+- Opening or programmatically centering the panel starts no fallback request.
+- Scrubbing the panel does not create an unbounded download/decode queue.
+- A settled panel schedules every actually visible missing preview, but never
+  a virtualized buffer item.
+- No more than two thumbnail jobs are active at once, ordered centre-out.
+- Renewed scrolling, Reader navigation and Reader close release stale
+  thumbnail-only leases; visual auto-hide may finish the confirmed batch.
 - Selecting an item never starts a duplicate resolve/decode operation.
 - E-Hentai and 4KHD thumbnail behavior remains unchanged.
+
+Real-site acceptance result:
+
+- 18comic passed fallback preview loading and descrambling with the shared image
+  lifecycle.
+- E-Hentai retained its native URL/Sprite thumbnail behavior; no post-settle
+  fallback burst is expected because native previews load through the virtualized
+  panel and may be satisfied from browser cache.
+- 4KHD retained its native `w300-h300-rw` preview path and does not download the
+  `w2500-h2500-rw` Reader image solely for a thumbnail.
+- Desktop and mobile functional testing found no blocking regression. The
+  v3.2.0 thumbnail release gate is closed.
 
 ## Scroll position drift after closing the reader on an unloaded image
 

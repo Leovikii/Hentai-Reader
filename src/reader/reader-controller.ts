@@ -18,7 +18,8 @@ import type {
 import { createReaderShell } from './shell/reader-shell';
 import { ReaderSession } from './reader-session';
 import { createThumbnailController } from './controllers/thumbnail-controller';
-import { getCachedImage } from '../services/image-load-runtime';
+import { acquireImage, getCachedImage } from '../services/image-load-runtime';
+import { LOAD_PRIORITY } from '../state/load-policy';
 
 export interface ReaderControllerDeps {
   pageLoader: GalleryPageLoader;
@@ -68,7 +69,10 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
   }
 
   const prefetch = createPrefetchController(session);
-  const thumbnailController = createThumbnailController(session, deps.scroll);
+  const thumbnailController = createThumbnailController(session, deps.scroll, {
+    acquire: acquireImage,
+    priority: LOAD_PRIORITY.thumbnail,
+  });
   const autoPlay = createAutoPlay(() => pswp?.next(), deps.context);
   let pagination: ReaderPaginationController;
   const shell = createReaderShell({
@@ -86,7 +90,6 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     getCurrentIndex: () => session.currentIndex,
     getImageAt: index => session.elementAt(index),
     getItemAt: index => session.itemAt(index),
-    getItems: deps.context.getGalleryItems,
     getDisplayNumber: index => deps.context.getImageOffset() + index + 1,
     getThumbnailPosition: deps.context.getThumbnailPosition,
     subscribeSettingsChanged: deps.context.subscribeSettingsChanged,

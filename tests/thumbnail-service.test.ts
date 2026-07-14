@@ -1,10 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { GalleryItem } from '../src/core/gallery.ts';
-import {
-  createThumbnailPlan,
-  selectThumbnailFallbacks,
-} from '../src/services/thumbnail-service.ts';
+import { createThumbnailPlan } from '../src/services/thumbnail-service.ts';
 
 const item = (key: string, preview: GalleryItem['preview']): GalleryItem => ({
   key,
@@ -36,18 +33,4 @@ test('uses a loaded full image only when no cheap preview exists', () => {
     src: 'decoded',
     requestFullImage: false,
   });
-});
-
-test('limits missing-preview fallbacks and prioritizes the current neighbourhood', () => {
-  const items = [
-    item('0', { kind: 'none' }),
-    item('1', { kind: 'url', src: 'cheap' }),
-    item('2', { kind: 'none' }),
-    item('3', { kind: 'derived' }),
-    item('4', { kind: 'none' }),
-    item('5', { kind: 'none' }),
-  ];
-
-  assert.deepEqual(selectThumbnailFallbacks(items, [0, 1, 2, 3, 4, 5], 4, 3), [4, 3, 5]);
-  assert.deepEqual(selectThumbnailFallbacks(items, [0, 2], 0, 0), []);
 });

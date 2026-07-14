@@ -16,7 +16,6 @@ export interface ReaderShellOptions {
   getCurrentIndex: () => number;
   getImageAt: (index: number) => HTMLElement | undefined;
   getItemAt: (index: number) => GalleryItem | undefined;
-  getItems: () => readonly GalleryItem[];
   getDisplayNumber: (index: number) => number;
   getThumbnailPosition: () => 'top' | 'bottom' | 'left' | 'right';
   subscribeSettingsChanged: (listener: () => void) => () => void;
@@ -39,13 +38,16 @@ export function createReaderShell(options: ReaderShellOptions): ReaderShell {
     {
       onMobileInteractionStart: options.onMobileInteractionStart,
       onMobileInteractionEnd: options.onMobileInteractionEnd,
-      subscribeImageLoaded: options.thumbnailController.subscribeImageLoaded,
-      requestFallback: options.thumbnailController.requestFallback,
+      subscribeThumbnailChange: options.thumbnailController.subscribeChange,
+      preloadThumbnails: options.thumbnailController.preload,
+      cancelThumbnailPreloads: options.thumbnailController.cancelPreloads,
+      finishThumbnailPreload: options.thumbnailController.finishPreload,
+      getPreloadedAsset: options.thumbnailController.getPreloadedAsset,
+      getPreloadPhase: options.thumbnailController.getPreloadPhase,
       getImageCount: options.getImageCount,
       getCurrentIndex: options.getCurrentIndex,
       getImageAt: options.getImageAt,
       getItemAt: options.getItemAt,
-      getItems: options.getItems,
       getDisplayNumber: options.getDisplayNumber,
       getThumbnailPosition: options.getThumbnailPosition,
       subscribeSettingsChanged: options.subscribeSettingsChanged,
@@ -61,7 +63,7 @@ export function createReaderShell(options: ReaderShellOptions): ReaderShell {
     });
     driver.appendUi([...sidebarElements, hud.getElement()]);
 
-    return driver.observeUiVisibility(isVisible => {
+    const unsubscribeVisibility = driver.observeUiVisibility(isVisible => {
       sidebarElements.forEach(element => {
         element.classList.toggle('sp-hidden-by-pswp', !isVisible);
       });
@@ -70,6 +72,12 @@ export function createReaderShell(options: ReaderShellOptions): ReaderShell {
         else sidebar.closePanel();
       }
     });
+
+    return () => {
+      unsubscribeVisibility();
+      sidebar.closePanel();
+      options.thumbnailController.cancelPreloads();
+    };
   }
 
   return {

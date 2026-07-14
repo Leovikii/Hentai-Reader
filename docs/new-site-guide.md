@@ -10,7 +10,9 @@ Blob 回收或缩略图面板逻辑。开始前先阅读 `final-refactor-plan.md
 1. 有廉价缩略图：Gallery Item 使用 `preview.kind = 'url'`；Sprite 图使用
    `preview.kind = 'sprite'` 并提供准确 crop。
 2. 没有缩略图：使用 `derived` 或 `none`。不要在适配器中批量下载原图充当
-   缩略图，Reader 的 ThumbnailController 会按统一预算处理派生预览。
+   缩略图。用户主动滚动缩略图面板并稳定 300ms 后，Reader 的 ThumbnailController
+   会把实际可视范围按中心优先、并发 2 接入共享图片管线；再次滚动或 Reader 关闭时
+   自动释放缩略图租约。
 
 图片来源分为三个阶段：
 

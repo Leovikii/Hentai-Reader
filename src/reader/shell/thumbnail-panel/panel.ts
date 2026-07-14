@@ -1,20 +1,26 @@
 import type { GalleryItem } from '../../../core/gallery';
-import { createThumbnailPlan, selectThumbnailFallbacks } from '../../../services/thumbnail-service';
+import type { LoadedImage } from '../../../core/image';
+import { createThumbnailPlan } from '../../../services/thumbnail-service';
+import type { ThumbnailPreloadPhase } from '../../controllers/thumbnail-controller';
 
 
 const VISIBLE_COUNT = 15;
 const BUFFER = 3;
+const PRELOAD_SETTLE_MS = 300;
 
 export interface ThumbnailPanelOptions {
   onMobileInteractionStart?: () => void;
   onMobileInteractionEnd?: () => void;
-  subscribeImageLoaded?: (listener: (index: number) => void) => () => void;
-  requestFallback?: (index: number) => void;
+  subscribeThumbnailChange?: (listener: (index: number) => void) => () => void;
+  preloadThumbnails?: (indices: readonly number[]) => void;
+  cancelThumbnailPreloads?: () => void;
+  finishThumbnailPreload?: (index: number, failed?: boolean) => void;
+  getPreloadedAsset?: (index: number) => LoadedImage | undefined;
+  getPreloadPhase?: (index: number) => ThumbnailPreloadPhase;
   getImageCount: () => number;
   getCurrentIndex: () => number;
   getImageAt: (index: number) => HTMLElement | undefined;
   getItemAt: (index: number) => GalleryItem | undefined;
-  getItems: () => readonly GalleryItem[];
   getDisplayNumber: (index: number) => number;
   getThumbnailPosition: () => 'top' | 'bottom' | 'left' | 'right';
   subscribeSettingsChanged: (listener: () => void) => () => void;
@@ -51,6 +57,8 @@ export function createThumbnailPanel(
   const activeItems = new Map<number, HTMLElement>();
   let hideTimeout: ReturnType<typeof setTimeout>;
   let isPanelActive = false;
+  let preloadTimer: ReturnType<typeof setTimeout> | null = null;
+  let userScrollArmed = false;
 
   function openPanel(keepOpen = false): void {
     if (options.getImageCount() === 0) return;
@@ -75,9 +83,23 @@ export function createThumbnailPanel(
     }
   }
 
+  function clearThumbnailPreloadTimer(): void {
+    if (preloadTimer) {
+      clearTimeout(preloadTimer);
+      preloadTimer = null;
+    }
+  }
+
+  function cancelThumbnailPreloadWork(): void {
+    clearThumbnailPreloadTimer();
+    options.cancelThumbnailPreloads?.();
+  }
+
   function closePanel(): void {
     isPanelActive = false;
+    userScrollArmed = false;
     thumbPanel.classList.remove('active');
+    clearThumbnailPreloadTimer();
   }
 
   // Mouse interaction (ignore touch-simulated mouse events)
@@ -91,7 +113,7 @@ export function createThumbnailPanel(
     if (e.pointerType === 'mouse') openPanel(true);
   });
 
-  options.subscribeImageLoaded?.(idx => {
+  options.subscribeThumbnailChange?.(idx => {
     if (activeItems.has(idx)) {
       renderItemContent(activeItems.get(idx)!, idx);
     }
@@ -189,11 +211,13 @@ export function createThumbnailPanel(
     const img = options.getImageAt(index);
     const item = options.getItemAt(index);
     const isLoadedImg = img && img.tagName === 'IMG' && (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0;
-    const loadedSource = isLoadedImg
+    const preloadedAsset = options.getPreloadedAsset?.(index);
+    const loadedSource = preloadedAsset?.src || (isLoadedImg
       ? (img as HTMLImageElement).dataset.realSrc || (img as HTMLImageElement).src
-      : undefined;
+      : undefined);
     const plan = item ? createThumbnailPlan(item, loadedSource) : { requestFullImage: false };
     const thumbSrc = plan.src || '';
+    const isDerived = item?.preview.kind === 'none' || item?.preview.kind === 'derived';
 
     // Sprite-sheet crop (E-Hentai "Normal" thumbnails): one shared image holds a
     // row of cells. Only crop the still-placeholder case — a loaded full image is
@@ -205,9 +229,14 @@ export function createThumbnailPanel(
       w: plan.crop.width,
       h: plan.crop.height,
     } : undefined;
-    const cacheKey = crop ? `${thumbSrc}#${crop.x},${crop.y},${crop.w},${crop.h}` : thumbSrc;
+    const cacheKey = isDerived && item
+      ? `derived:${item.key}`
+      : crop
+        ? `${thumbSrc}#${crop.x},${crop.y},${crop.w},${crop.h}`
+        : thumbSrc;
+    const cached = cacheKey ? getCachedThumb(cacheKey) : undefined;
 
-    if (thumbSrc) {
+    if (cached || thumbSrc) {
       let thumbCanvas = el.querySelector('canvas.sp-thumb-img') as HTMLCanvasElement | null;
       if (!thumbCanvas) {
         el.innerHTML = '';
@@ -221,13 +250,14 @@ export function createThumbnailPanel(
       if (thumbCanvas.dataset.src !== cacheKey) {
         thumbCanvas.dataset.src = cacheKey;
 
-        const cached = getCachedThumb(cacheKey);
         if (cached) {
           blitToCanvas(thumbCanvas, cached);
-        } else if (isLoadedImg) {
+          if (isDerived && preloadedAsset) options.finishThumbnailPreload?.(index);
+        } else if (isDerived && isLoadedImg && loadedSource === thumbSrc) {
           const c = makeThumbCanvas(img as HTMLImageElement, (img as HTMLImageElement).naturalWidth, (img as HTMLImageElement).naturalHeight);
           putCachedThumb(cacheKey, c);
           blitToCanvas(thumbCanvas, c);
+          if (preloadedAsset) options.finishThumbnailPreload?.(index);
         } else {
           const tempImg = new Image();
           tempImg.decoding = 'async';
@@ -238,6 +268,10 @@ export function createThumbnailPanel(
             if (thumbCanvas!.dataset.src === cacheKey) {
               blitToCanvas(thumbCanvas!, c);
             }
+            if (isDerived) options.finishThumbnailPreload?.(index);
+          };
+          tempImg.onerror = () => {
+            if (isDerived) options.finishThumbnailPreload?.(index, true);
           };
           tempImg.src = thumbSrc;
         }
@@ -252,35 +286,54 @@ export function createThumbnailPanel(
         ph.className = 'sp-thumb-ph';
         el.appendChild(ph);
       }
-      ph.textContent = String(options.getDisplayNumber(index));
+      const phase = options.getPreloadPhase?.(index) ?? 'idle';
+      ph.classList.toggle('loading', phase === 'loading');
+      ph.classList.toggle('error', phase === 'error');
+      ph.textContent = phase === 'error'
+        ? `${options.getDisplayNumber(index)} !`
+        : String(options.getDisplayNumber(index));
     }
-  }
-
-  let fallbackLoadTimer: ReturnType<typeof setTimeout> | null = null;
-
-  // Sites without cheap standalone thumbnails (18comic: scrambled source, no
-  // preview image) can't show a panel preview for an unloaded page. For those,
-  // fall back to the shared full-image load path — the decoded result also warms
-  // shared image cache, so the reader reuses it for free (no double
-  // download). Gated on the *absence* of a cheap thumb, per-item, so thumb-capable
-  // sites (e-hentai/4khd) keep their lightweight behaviour untouched. Debounced so
-  // only the range the user settles on loads, not every page flicked past.
-  function triggerFallbackLoadForVisible(): void {
-    if (fallbackLoadTimer) clearTimeout(fallbackLoadTimer);
-    fallbackLoadTimer = setTimeout(() => {
-      const candidates = selectThumbnailFallbacks(
-        options.getItems(),
-        activeItems.keys(),
-        options.getCurrentIndex(),
-      );
-      for (const idx of candidates) {
-        options.requestFallback?.(idx);
-      }
-    }, 200);
   }
 
   function getScrollOffset(): number {
     return isVertical() ? viewport.scrollTop : viewport.scrollLeft;
+  }
+
+  function visiblePreloadIndices(): number[] {
+    const total = options.getImageCount();
+    const itemSize = getItemSize();
+    const offset = getScrollOffset();
+    const viewportSize = vpSize();
+    const first = Math.max(0, Math.floor(offset / itemSize));
+    const last = Math.min(total - 1, Math.ceil((offset + viewportSize) / itemSize) - 1);
+    const center = offset + viewportSize / 2;
+    const indices: number[] = [];
+
+    for (let index = first; index <= last; index++) {
+      const item = options.getItemAt(index);
+      if (!item || (item.preview.kind !== 'none' && item.preview.kind !== 'derived')) continue;
+      if (getCachedThumb(`derived:${item.key}`)) continue;
+
+      const element = options.getImageAt(index) as HTMLImageElement | undefined;
+      if (element?.tagName === 'IMG' && element.complete && element.naturalWidth > 0) continue;
+      indices.push(index);
+    }
+
+    return indices.sort((a, b) => {
+      const distanceA = Math.abs((a + 0.5) * itemSize - center);
+      const distanceB = Math.abs((b + 0.5) * itemSize - center);
+      return distanceA - distanceB || a - b;
+    });
+  }
+
+  function scheduleThumbnailPreload(): void {
+    cancelThumbnailPreloadWork();
+    preloadTimer = setTimeout(() => {
+      preloadTimer = null;
+      userScrollArmed = false;
+      if (!isPanelActive) return;
+      options.preloadThumbnails?.(visiblePreloadIndices());
+    }, PRELOAD_SETTLE_MS);
   }
 
   let isProgrammaticScroll = false;
@@ -377,6 +430,8 @@ export function createThumbnailPanel(
 
     const currentIndex = options.getCurrentIndex();
     if (currentIndex !== lastCenteredIndex) {
+      userScrollArmed = false;
+      cancelThumbnailPreloadWork();
       if (clickedFromPanel) {
         ensureVisible();
         clickedFromPanel = false;
@@ -386,7 +441,6 @@ export function createThumbnailPanel(
       lastCenteredIndex = currentIndex;
     }
     renderVisibleItems();
-    triggerFallbackLoadForVisible();
 
     const displayLabel = `${options.getDisplayNumber(currentIndex)} / ${options.getDisplayNumber(total - 1)}`;
     counter.textContent = displayLabel;
@@ -400,7 +454,6 @@ export function createThumbnailPanel(
     requestAnimationFrame(() => {
       scrollRafPending = false;
       renderVisibleItems();
-      triggerFallbackLoadForVisible();
 
       if (isProgrammaticScroll) {
         isProgrammaticScroll = false;
@@ -408,6 +461,10 @@ export function createThumbnailPanel(
         lastScrollPos = getScrollOffset();
         return;
       }
+
+      if (!userScrollArmed) return;
+
+      scheduleThumbnailPreload();
 
       const currentScroll = getScrollOffset();
       const isScrollingUp = currentScroll < lastScrollPos;
@@ -432,6 +489,7 @@ export function createThumbnailPanel(
   }, { passive: true });
 
   viewport.addEventListener('wheel', (e) => {
+    userScrollArmed = true;
     // Check if primarily vertical wheel
     if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
       const prevScroll = getScrollOffset();
@@ -490,6 +548,7 @@ export function createThumbnailPanel(
     if (!isDragging || e.pointerId !== dragPointerId) return;
     if (Math.abs(e.clientX - startX) > 5 || Math.abs(e.clientY - startY) > 5) {
       hasDragged = true;
+      userScrollArmed = true;
     }
     e.preventDefault();
     
@@ -614,6 +673,7 @@ export function createThumbnailPanel(
   }, { passive: true });
 
   viewport.addEventListener('touchmove', (e) => {
+    userScrollArmed = true;
     const currentScroll = getScrollOffset();
     const mOffset = maxOffset();
     
@@ -655,12 +715,16 @@ export function createThumbnailPanel(
   });
 
   window.addEventListener('resize', () => {
+    userScrollArmed = false;
+    cancelThumbnailPreloadWork();
     if (options.getImageCount() > 0) {
       renderVisibleItems();
     }
   }, { passive: true });
   
   options.subscribeSettingsChanged(() => {
+    userScrollArmed = false;
+    cancelThumbnailPreloadWork();
     centerOnCurrent();
     renderVisibleItems();
   });

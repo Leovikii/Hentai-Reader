@@ -6,8 +6,11 @@ export class ReaderSession {
   private index = 0;
   private navigated = false;
   private previousIndex = -1;
+  private readonly getItems: () => readonly GalleryItem[];
 
-  constructor(private readonly getItems: () => readonly GalleryItem[]) {}
+  constructor(getItems: () => readonly GalleryItem[]) {
+    this.getItems = getItems;
+  }
 
   syncImages(images: HTMLElement[]): boolean {
     const changed = images.length !== this.images.length

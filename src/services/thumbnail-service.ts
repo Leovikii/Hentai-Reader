@@ -20,21 +20,3 @@ export function createThumbnailPlan(item: GalleryItem, loadedSource?: string): T
         : { requestFullImage: true };
   }
 }
-
-/** Bounds full-image fallbacks and orders them by reader proximity. */
-export function selectThumbnailFallbacks(
-  items: readonly GalleryItem[],
-  visibleIndices: Iterable<number>,
-  currentIndex: number,
-  limit = 3,
-): number[] {
-  if (limit <= 0) return [];
-
-  return Array.from(new Set(visibleIndices))
-    .filter(index => {
-      const preview = items[index]?.preview;
-      return preview?.kind === 'derived' || preview?.kind === 'none';
-    })
-    .sort((a, b) => Math.abs(a - currentIndex) - Math.abs(b - currentIndex) || a - b)
-    .slice(0, limit);
-}

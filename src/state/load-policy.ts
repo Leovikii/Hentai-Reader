@@ -2,6 +2,7 @@
 export const LOAD_PRIORITY = {
   scroll: 0,
   warmup: 5,
+  thumbnail: 10,
   pageHtml: 50,
   foreground: 100,
 } as const;

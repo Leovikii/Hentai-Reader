@@ -319,6 +319,25 @@
   user-select: none;
 }
 
+.sp-thumb-ph.loading {
+  color: #aaa;
+  gap: 6px;
+}
+
+.sp-thumb-ph.loading::after {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--hr-accent);
+  border-radius: 50%;
+  animation: hr-spin 1s linear infinite;
+}
+
+.sp-thumb-ph.error {
+  color: #ef8080;
+}
+
 .sp-thumb-label {
   position: absolute;
   bottom: 0;
