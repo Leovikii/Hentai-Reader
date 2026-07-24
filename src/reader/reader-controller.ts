@@ -110,14 +110,12 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
       }
       isReinitializing = false;
     },
+    onPageAdded: direction => {
+      prefetch.setWindow(session.currentIndex, direction === 'next' ? 1 : -1);
+    },
     onLoading: () => shell.showStatus({ status: 'loading', text: i18n.downloading }),
     onIdle: () => shell.hideStatus(),
-    onError: (_direction, retry) => {
-      shell.showStatus({ status: 'error', text: i18n.loadFailed, onClick: () => {
-        shell.hideStatus();
-        retry();
-      } });
-    },
+    onError: () => shell.showStatus({ status: 'error', text: i18n.loadFailed }),
   }, deps.context);
 
   function open(startIdx?: number): void {

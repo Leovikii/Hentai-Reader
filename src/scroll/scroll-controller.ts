@@ -33,6 +33,21 @@ let lazyLoadObserver: IntersectionObserver | null = null;
 const placeholderLeases = new WeakMap<HTMLElement, ImageLoadLease>();
 const imageElementLeases = new WeakMap<HTMLElement, ImageLoadLease>();
 
+function scheduleAutomaticRetry(placeholder: HTMLElement, pIndex: number, index: number): void {
+  delete placeholder.dataset.isFetching;
+  setErrorState(placeholder, pIndex, index);
+  const attempts = parseInt(placeholder.dataset.autoRetryAttempts || '0', 10);
+  if (attempts >= 1) return;
+  placeholder.dataset.autoRetryAttempts = String(attempts + 1);
+
+  setTimeout(() => {
+    delete placeholder.dataset.lazyLoaded;
+    if (document.documentElement.classList.contains('hr-reader-open')) return;
+    if (lazyLoadObserver) lazyLoadObserver.observe(placeholder);
+    else loadPlaceholderImage(placeholder);
+  }, 750);
+}
+
 export function loadPlaceholderImage(placeholder: HTMLElement): void {
   const url = placeholder.dataset.url;
   const adapter = store.activeAdapter;
@@ -52,7 +67,7 @@ export function loadPlaceholderImage(placeholder: HTMLElement): void {
   lease.result.then(asset => {
     if (placeholderLeases.get(placeholder) !== lease) return;
     if (!asset) {
-      setErrorState(placeholder, pIndex, index);
+      scheduleAutomaticRetry(placeholder, pIndex, index);
       return;
     }
 
@@ -81,7 +96,7 @@ export function loadPlaceholderImage(placeholder: HTMLElement): void {
       imageElementLeases.get(img)?.release();
       imageElementLeases.delete(img);
       if (img.parentNode) img.parentNode.replaceChild(placeholder, img);
-      setErrorState(placeholder, pIndex, index);
+      scheduleAutomaticRetry(placeholder, pIndex, index);
     };
 
     img.src = asset.src;
@@ -99,7 +114,8 @@ export function loadPlaceholderImage(placeholder: HTMLElement): void {
       notifyScrollImageLoaded({ index: itemIndex, element: img, viewerUrl: url });
     }
   }).catch(() => {
-    setErrorState(placeholder, pIndex, index);
+    if (placeholderLeases.get(placeholder) !== lease) return;
+    scheduleAutomaticRetry(placeholder, pIndex, index);
   }).finally(() => {
     if (placeholderLeases.get(placeholder) === lease) {
       placeholderLeases.delete(placeholder);
@@ -243,7 +259,7 @@ export function setupAutoScroll(pageLoader: GalleryPageLoader): void {
         }
       }).finally(() => { store.isFetching = false; });
     }
-  }, { rootMargin: CFG.nextPage });
+  }, { rootMargin: CFG.scrollPageRootMargin });
 
   pageObs.observe(scrollSent);
 }

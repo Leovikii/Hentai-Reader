@@ -41,7 +41,33 @@ export function createReaderImageController(
 ): ReaderImageController {
   const byteState = new Map<string, 'loading' | 'loaded' | 'error'>();
   const leases = new Map<string, { lease: ImageLoadLease; unsubscribe: () => void }>();
+  const retryAttempts = new Map<string, number>();
+  const retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
   let disposed = false;
+
+  function releaseLease(url: string): void {
+    const held = leases.get(url);
+    if (!held) return;
+    held.unsubscribe();
+    held.lease.release();
+    leases.delete(url);
+  }
+
+  function scheduleAutomaticRetry(viewerUrl: string): void {
+    releaseLease(viewerUrl);
+    byteState.set(viewerUrl, 'error');
+    notify(viewerUrl);
+    if ((retryAttempts.get(viewerUrl) ?? 0) >= 1 || disposed) return;
+    retryAttempts.set(viewerUrl, 1);
+    retryTimers.set(viewerUrl, setTimeout(() => {
+      retryTimers.delete(viewerUrl);
+      if (disposed) return;
+      const index = indexOfUrl(viewerUrl);
+      if (index === -1) return;
+      byteState.delete(viewerUrl);
+      ensureLease(index, viewerUrl);
+    }, 750));
+  }
 
   function urlAt(index: number): string | undefined {
     const itemUrl = session.itemAt(index)?.viewerUrl;
@@ -88,18 +114,17 @@ export function createReaderImageController(
       if (disposed || leases.get(viewerUrl)?.lease !== lease) return;
       const liveIndex = indexOfUrl(viewerUrl);
       if (!asset || liveIndex === -1) {
-        byteState.set(viewerUrl, 'error');
-        notify(viewerUrl);
+        scheduleAutomaticRetry(viewerUrl);
         return;
       }
+      retryAttempts.delete(viewerUrl);
       byteState.set(viewerUrl, 'loaded');
       notify(viewerUrl);
       deps.refreshSlide(liveIndex);
       deps.onAssetReady(liveIndex);
     }).catch(() => {
-      if (disposed) return;
-      byteState.set(viewerUrl, 'error');
-      notify(viewerUrl);
+      if (disposed || leases.get(viewerUrl)?.lease !== lease) return;
+      scheduleAutomaticRetry(viewerUrl);
     });
   }
 
@@ -176,22 +201,24 @@ export function createReaderImageController(
   }
 
   function releaseOutside(center: number): void {
-    for (const [url, held] of leases) {
+    for (const url of leases.keys()) {
       const index = indexOfUrl(url);
       if (index !== -1 && Math.abs(index - center) <= 2) continue;
-      held.unsubscribe();
-      held.lease.release();
-      leases.delete(url);
+      releaseLease(url);
+    }
+    for (const [url, timer] of retryTimers) {
+      const index = indexOfUrl(url);
+      if (index !== -1 && Math.abs(index - center) <= 2) continue;
+      clearTimeout(timer);
+      retryTimers.delete(url);
     }
   }
 
   function dispose(): void {
     disposed = true;
-    for (const held of leases.values()) {
-      held.unsubscribe();
-      held.lease.release();
-    }
-    leases.clear();
+    for (const url of Array.from(leases.keys())) releaseLease(url);
+    for (const timer of retryTimers.values()) clearTimeout(timer);
+    retryTimers.clear();
   }
 
   return {

@@ -1,6 +1,9 @@
 export interface ResolvedImage {
   src: string;
-  nl?: string;
+  /** Opaque token for resolving an alternate source after this source fails. */
+  retryToken?: string;
+  /** Optional deadline for one byte-load attempt; adapters choose the policy. */
+  loadTimeoutMs?: number;
   /** Opaque adapter-owned data consumed by its optional materializer. */
   materializeData?: unknown;
   /** True only when the resolver transfers object-URL ownership to the loader. */

@@ -49,7 +49,7 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
   bottomSheet.appendChild(sheetHeader);
 
   SETTINGS.forEach(({ label, key }) => {
-    if (key === 'scrollMode' && store.activeAdapter && ['18comic', '4KHD'].includes(store.activeAdapter.name)) {
+    if (key === 'scrollMode' && store.activeAdapter?.scrollPolicy?.configurable === false) {
       return;
     }
     const item = document.createElement('div');

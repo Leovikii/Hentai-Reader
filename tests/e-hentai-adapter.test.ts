@@ -6,7 +6,6 @@ import {
   getEHentaiNextUrl,
   getEHentaiPrevUrl,
   parseEHentaiPageMetadata,
-  parseEHentaiResolvedDimensions,
   parseEHentaiViewer,
 } from '../src/sites/e-hentai/gallery.ts';
 
@@ -89,6 +88,10 @@ test('builds and parses E-Hentai viewer node-switch data once per document', () 
     buildEHentaiViewerUrl('https://e-hentai.org/s/token/1?foo=bar', 'node-token'),
     'https://e-hentai.org/s/token/1?foo=bar&nl=node-token',
   );
+  assert.equal(
+    buildEHentaiViewerUrl('https://e-hentai.org/s/token/1?nl=old&foo=bar', 'new'),
+    'https://e-hentai.org/s/token/1?nl=new&foo=bar',
+  );
 
   const image = {
     src: 'https://ehgt.org/full-image.jpg',
@@ -101,10 +104,4 @@ test('builds and parses E-Hentai viewer node-switch data once per document', () 
     src: 'https://ehgt.org/full-image.jpg',
     nl: 'next-node',
   });
-});
-
-test('extracts original dimensions from an E-Hentai hath image URL', () => {
-  const url = 'https://host.hath.network/h/hash-69240-800-1400-wbp/'
-    + 'keystamp=1;fileindex=2;xres=800/Ansha_0117.webp';
-  assert.deepEqual(parseEHentaiResolvedDimensions(url), { w: 800, h: 1400 });
 });

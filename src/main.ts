@@ -17,9 +17,6 @@ import { GalleryPageLoader } from './core/gallery-page-loader';
   store.activeAdapter = adapter;
   const pageLoader = new GalleryPageLoader(adapter);
   store.reloadSettings();
-  if (adapter.name === '18comic' || adapter.name === '4KHD') {
-    (store.settings as any).scrollMode = true;
-  }
   const initialPage = await pageLoader.loadInitialPage(document, window.location.href);
   if (initialPage.items.length === 0) return; // Nothing to process
 

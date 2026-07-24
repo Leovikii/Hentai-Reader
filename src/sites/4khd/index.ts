@@ -5,6 +5,7 @@ const parser = new DOMParser();
 
 export const FourKHDAdapter: SiteAdapter = {
   name: '4KHD',
+  scrollPolicy: { defaultEnabled: true, configurable: false },
   
   match(url: string) {
     return url.includes('4khd.com') || url.includes('xxtt.ink') || url.includes('uuss.uk') || url.includes('ssuu.uk');

@@ -1,20 +1,22 @@
 import { GM_getValue } from '$';
 import type { AppConfig, UserSettings } from './types';
+import type { SiteAdapter } from '../core/site-adapter';
 
 export const CFG: AppConfig = {
-  nextPage: '3000px 0px',
-  maxRetries: 3,
-  retryDelay: 1000,
-  maxConcurrent: 3,
+  scrollPageRootMargin: '3000px 0px',
+  imageMaterializeConcurrent: 3,
 };
 
-export function loadSettings(adapterName?: string): UserSettings {
-  const prefix = adapterName ? `${adapterName}_` : '';
-  const is4KHD = adapterName === '4KHD';
+export function loadSettings(adapter?: Pick<SiteAdapter, 'name' | 'scrollPolicy'>): UserSettings {
+  const prefix = adapter ? `${adapter.name}_` : '';
   const globalScrollMode = GM_getValue('scrollMode', true);
+  const scrollDefault = adapter?.scrollPolicy?.defaultEnabled ?? globalScrollMode;
+  const scrollMode = adapter?.scrollPolicy?.configurable === false
+    ? scrollDefault
+    : GM_getValue(`${prefix}scrollMode`, scrollDefault);
   
   return {
-    scrollMode: GM_getValue(`${prefix}scrollMode`, is4KHD ? true : globalScrollMode),
+    scrollMode,
     showControl: GM_getValue('showControl', true),
     autoEnterSinglePage: GM_getValue('autoEnterSinglePage', false),
     clickToEnterReader: GM_getValue('clickToEnterReader', true),

@@ -86,6 +86,35 @@ test('releases a slot when a task throws synchronously', async () => {
   assert.equal(recovered, true);
 });
 
+test('promotes queued work by stable key', async () => {
+  const limiter = new NetLimiter(1);
+  const blocker = deferred<void>();
+  const order: string[] = [];
+  const active = limiter.run(async () => { await blocker.promise; });
+  const target = limiter.run(async () => { order.push('target'); }, { priority: 1, key: 'target' });
+  const medium = limiter.run(async () => { order.push('medium'); }, { priority: 5, key: 'medium' });
+
+  limiter.promote('target', 10);
+  blocker.resolve();
+  await Promise.all([active, target, medium]);
+  assert.deepEqual(order, ['target', 'medium']);
+});
+
+test('removes an aborted queued job without consuming a slot', async () => {
+  const limiter = new NetLimiter(1);
+  const blocker = deferred<void>();
+  const controller = new AbortController();
+  const active = limiter.run(async () => { await blocker.promise; });
+  const cancelled = limiter.run(async () => {}, { key: 'cancelled', signal: controller.signal });
+  const next = limiter.run(async () => 'next');
+
+  controller.abort();
+  await assert.rejects(cancelled, error => (error as Error).name === 'AbortError');
+  blocker.resolve();
+  assert.equal(await next, 'next');
+  await active;
+});
+
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;

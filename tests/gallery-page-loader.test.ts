@@ -38,7 +38,7 @@ test('deduplicates concurrent page requests and stops already loaded pages', asy
   assert.equal(calls, 1);
 });
 
-test('removes failed requests from in-flight state so retry can succeed', async () => {
+test('automatically retries a temporary page failure', async () => {
   let calls = 0;
   const adapter: GalleryAdapter = {
     loadInitialPage: async () => page('initial'),
@@ -50,9 +50,25 @@ test('removes failed requests from in-flight state so retry can succeed', async 
   };
   const loader = new GalleryPageLoader(adapter);
 
-  await assert.rejects(loader.loadPage('retry'), /temporary/);
   assert.equal((await loader.loadPage('retry'))?.pageUrl, 'retry');
   assert.equal(calls, 2);
+});
+
+test('bounds automatic page retries and clears in-flight state after final failure', async () => {
+  let calls = 0;
+  const adapter: GalleryAdapter = {
+    loadInitialPage: async () => page('initial'),
+    loadPage: async () => {
+      calls++;
+      throw new Error('offline');
+    },
+  };
+  const loader = new GalleryPageLoader(adapter);
+
+  await assert.rejects(loader.loadPage('retry'), /offline/);
+  assert.equal(calls, 3);
+  await assert.rejects(loader.loadPage('retry'), /offline/);
+  assert.equal(calls, 6);
 });
 
 test('rejects empty fetched pages without marking them loaded', async () => {

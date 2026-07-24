@@ -46,6 +46,27 @@ test('site adapters do not mutate the application Store', async () => {
   await assertSourcesDoNotContain(path.join(srcRoot, 'sites'), [/state\/store/]);
 });
 
+test('common entry, settings, and UI code do not branch on supported site names', async () => {
+  const commonFiles = [
+    'main.ts',
+    'state/config.ts',
+    'state/store.ts',
+    'ui/settings-panel.ts',
+  ];
+  for (const relative of commonFiles) {
+    const source = await readFile(path.join(srcRoot, relative), 'utf8');
+    assert.equal(/18comic|4KHD|E-Hentai|ExHentai/.test(source), false, relative);
+  }
+});
+
+test('public image contracts use generic retry terminology', async () => {
+  const contracts = await Promise.all([
+    readFile(path.join(srcRoot, 'core/image.ts'), 'utf8'),
+    readFile(path.join(srcRoot, 'core/site-adapter.ts'), 'utf8'),
+  ]);
+  assert.equal(/\bnl(?:Token)?\b/.test(contracts.join('\n')), false);
+});
+
 test('transitional feature and legacy reader UI files are gone', async () => {
   const removed = [
     'features/scroll-mode.ts',

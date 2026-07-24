@@ -2,6 +2,7 @@ import type { GalleryPage } from '../../core/gallery';
 import { EmptyGalleryPageError, type GalleryPageLoader } from '../../core/gallery-page-loader';
 import type { ReaderAppContext } from '../contracts';
 import type { ReaderSession } from '../reader-session';
+import { READER_PREFETCH } from '../../state/load-policy';
 
 export type PaginationDirection = 'next' | 'prev';
 
@@ -13,7 +14,8 @@ export interface ReaderPaginationControllerDeps {
   afterPrepend: (itemCount: number) => void;
   onLoading: (direction: PaginationDirection) => void;
   onIdle: () => void;
-  onError: (direction: PaginationDirection, retry: () => void) => void;
+  onError: (direction: PaginationDirection) => void;
+  onPageAdded: (direction: PaginationDirection) => void;
 }
 
 export interface ReaderPaginationController {
@@ -30,7 +32,7 @@ export function createReaderPaginationController(
   function checkNearEnd(): void {
     if (!context.getNextUrl() || context.isPageFetching()) return;
     const remainingImages = session.imageCount - session.currentIndex;
-    if (remainingImages <= 5) loadNext();
+    if (remainingImages <= READER_PREFETCH.ahead) loadNext();
   }
 
   function loadNext(): void {
@@ -48,6 +50,7 @@ export function createReaderPaginationController(
       }
       deps.appendPage(page);
       deps.syncImages();
+      deps.onPageAdded('next');
       deps.onIdle();
       shouldContinue = true;
     }).catch(err => {
@@ -57,7 +60,7 @@ export function createReaderPaginationController(
         return;
       }
       console.error('[Single Page] Load failed', err);
-      deps.onError('next', loadNext);
+      deps.onError('next');
     }).finally(() => {
       context.setPageFetching(false);
       if (shouldContinue) checkNearEnd();
@@ -79,6 +82,7 @@ export function createReaderPaginationController(
       deps.prependPage(page);
       deps.syncImages();
       deps.afterPrepend(page.items.length);
+      deps.onPageAdded('prev');
       deps.onIdle();
     }).catch(err => {
       if (err instanceof EmptyGalleryPageError) {
@@ -87,7 +91,7 @@ export function createReaderPaginationController(
         return;
       }
       console.error('[Single Page] Load prev failed', err);
-      deps.onError('prev', loadPrev);
+      deps.onError('prev');
     }).finally(() => { context.setPageFetching(false); });
   }
 

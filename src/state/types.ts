@@ -8,9 +8,7 @@ export interface UserSettings {
 }
 
 export interface AppConfig {
-  nextPage: string;
-  maxRetries: number;
-  retryDelay: number;
-  maxConcurrent: number;
+  scrollPageRootMargin: string;
+  imageMaterializeConcurrent: number;
 }
 
