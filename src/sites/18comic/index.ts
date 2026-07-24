@@ -88,6 +88,7 @@ const materialize = create18ComicBrowserMaterializer((aid, imageId) => {
 
 export const Comic18Adapter: SiteAdapter = {
   name: '18comic',
+  scrollPolicy: { defaultEnabled: true, configurable: false },
 
   match(url: string) {
     return url.includes('18comic.vip') || url.includes('18comic.ink');

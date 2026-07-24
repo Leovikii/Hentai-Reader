@@ -110,7 +110,9 @@ export function parseEHentaiPageMetadata(doc: Document, itemCount: number): EHen
 
 export function buildEHentaiViewerUrl(url: string, nlToken?: string): string {
   if (!nlToken) return url;
-  return `${url}${url.includes('?') ? '&' : '?'}nl=${nlToken}`;
+  const viewerUrl = new URL(url);
+  viewerUrl.searchParams.set('nl', nlToken);
+  return viewerUrl.toString();
 }
 
 export function parseEHentaiViewer(doc: Document): EHentaiViewerImage | null {
@@ -119,10 +121,4 @@ export function parseEHentaiViewer(doc: Document): EHentaiViewerImage | null {
   const onerror = image.getAttribute('onerror') || '';
   const token = onerror.match(/nl\(['"]([^'"]+)['"]\)/)?.[1];
   return { src: image.src, ...(token ? { nl: token } : {}) };
-}
-
-export function parseEHentaiResolvedDimensions(url: string): { w: number; h: number } | null {
-  const match = url.match(/-(\d+)-(\d+)-(?:wbp|jpg|png|gif|jpeg)/i);
-  if (!match) return null;
-  return { w: parseInt(match[1], 10), h: parseInt(match[2], 10) };
 }

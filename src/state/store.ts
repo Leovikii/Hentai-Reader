@@ -34,11 +34,12 @@ class Store {
   }
 
   reloadSettings(): void {
-    this._settings = loadSettings(this.activeAdapter?.name);
+    this._settings = loadSettings(this.activeAdapter ?? undefined);
     // Don't emit here, we are doing it during init
   }
 
   updateSetting<K extends keyof UserSettings>(key: K, value: UserSettings[K]): void {
+    if (key === 'scrollMode' && this.activeAdapter?.scrollPolicy?.configurable === false) return;
     this._settings[key] = value;
     if (key === 'scrollMode' && this.activeAdapter) {
       GM_setValue(`${this.activeAdapter.name}_scrollMode`, value);

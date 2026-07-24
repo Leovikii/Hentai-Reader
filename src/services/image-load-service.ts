@@ -4,6 +4,7 @@ import type {
   LoadedImage,
   ResolvedImage,
 } from '../core/image';
+import type { ImageResolveContext } from '../core/site-adapter';
 
 export interface ImageAcquireOptions {
   intent: ImageLoadIntent;
@@ -21,9 +22,7 @@ export interface ImageLoadLease {
 export interface ImageLoadServiceDeps {
   resolve: (
     url: string,
-    nlToken: string | undefined,
-    force: boolean,
-    priority: number,
+    context: ImageResolveContext,
   ) => Promise<ResolvedImage | null>;
   loadBytes: (
     src: string,
@@ -46,8 +45,8 @@ export interface ImageLoadServiceDeps {
 
 export interface ImageLoadPolicy {
   resolveAttempts: number;
-  nodeRetries: number;
-  plainRetries: number;
+  alternateSourceRetries: number;
+  freshResolveRetries: number;
   retryDelay: number;
   cacheEntries: number;
 }
@@ -65,8 +64,8 @@ export interface ImageLoadServiceStats {
 
 const defaultPolicy: ImageLoadPolicy = {
   resolveAttempts: 4,
-  nodeRetries: 3,
-  plainRetries: 2,
+  alternateSourceRetries: 3,
+  freshResolveRetries: 2,
   retryDelay: 1000,
   cacheEntries: 80,
 };
@@ -180,7 +179,7 @@ export class ImageLoadService {
 
     for (let attempt = 0; attempt < this.policy.resolveAttempts && !signal.aborted; attempt++) {
       this.setPhase(url, 'resolving');
-      const candidate = await this.resolve(url, undefined, attempt > 0, load.priority);
+      const candidate = await this.resolve(url, undefined, attempt > 0, load);
       resolved = await this.materialize(url, candidate, load);
       if (resolved?.src) break;
       if (attempt + 1 < this.policy.resolveAttempts) await this.wait(signal);
@@ -192,22 +191,33 @@ export class ImageLoadService {
     }
 
     let loaded = await this.tryLoad(url, resolved, load);
-    let currentNl = resolved.nl;
+    let retryToken = resolved.retryToken;
+    const alternateCandidates = new Set([this.candidateKey(resolved)]);
 
-    for (let attempt = 0; !loaded && currentNl && attempt < this.policy.nodeRetries && !signal.aborted; attempt++) {
-      const candidate = await this.resolve(url, currentNl, true, load.priority);
+    for (let attempt = 0;
+      !loaded && retryToken && attempt < this.policy.alternateSourceRetries && !signal.aborted;
+      attempt++) {
+      const candidate = await this.resolve(url, retryToken, true, load);
       const next = await this.materialize(url, candidate, load);
       if (!next?.src) break;
+      const candidateKey = this.candidateKey(next);
+      if (alternateCandidates.has(candidateKey)) {
+        this.discard(url, next);
+        break;
+      }
+      alternateCandidates.add(candidateKey);
       this.discard(url, resolved);
-      currentNl = next.nl;
+      retryToken = next.retryToken;
       resolved = next;
       loaded = await this.tryLoad(url, next, load);
     }
 
-    for (let attempt = 0; !loaded && attempt < this.policy.plainRetries && !signal.aborted; attempt++) {
+    for (let attempt = 0;
+      !loaded && attempt < this.policy.freshResolveRetries && !signal.aborted;
+      attempt++) {
       await this.wait(signal);
       if (signal.aborted) break;
-      const candidate = await this.resolve(url, undefined, true, load.priority);
+      const candidate = await this.resolve(url, undefined, true, load);
       const next = await this.materialize(url, candidate, load);
       if (!next?.src) continue;
       this.discard(url, resolved);
@@ -245,24 +255,43 @@ export class ImageLoadService {
   ): Promise<{ width: number; height: number } | null> {
     if (load.controller.signal.aborted) return null;
     this.setPhase(url, 'downloading');
+    const parentSignal = load.controller.signal;
+    const attemptController = new AbortController();
+    const abortAttempt = () => attemptController.abort();
+    parentSignal.addEventListener('abort', abortAttempt, { once: true });
+    const timeout = resolved.loadTimeoutMs && resolved.loadTimeoutMs > 0
+      ? setTimeout(abortAttempt, resolved.loadTimeoutMs)
+      : null;
     try {
-      return await this.deps.loadBytes(resolved.src, load.controller.signal);
+      return await this.deps.loadBytes(resolved.src, attemptController.signal);
     } catch {
       return null;
+    } finally {
+      if (timeout !== null) clearTimeout(timeout);
+      parentSignal.removeEventListener('abort', abortAttempt);
     }
   }
 
   private async resolve(
     url: string,
-    nlToken: string | undefined,
+    retryToken: string | undefined,
     force: boolean,
-    priority: number,
+    load: ActiveLoad,
   ): Promise<ResolvedImage | null> {
     try {
-      return await this.deps.resolve(url, nlToken, force, priority);
+      return await this.deps.resolve(url, {
+        retryToken,
+        force,
+        priority: load.priority,
+        signal: load.controller.signal,
+      });
     } catch {
       return null;
     }
+  }
+
+  private candidateKey(resolved: ResolvedImage): string {
+    return `${resolved.src}\u0000${resolved.retryToken ?? ''}`;
   }
 
   private async materialize(

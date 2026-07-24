@@ -1,6 +1,24 @@
 import type { GalleryPage } from './gallery';
 import type { ResolvedImage } from './image';
 
+export interface ImageResolveContext {
+  /** Opaque adapter token used to request an alternate source after failure. */
+  retryToken?: string;
+  priority: number;
+  force: boolean;
+  signal: AbortSignal;
+}
+
+export interface SiteScrollPolicy {
+  defaultEnabled: boolean;
+  configurable?: boolean;
+}
+
+export interface ImageRequestQueueHooks {
+  promote?: (url: string, priority: number) => void;
+  cancelPrefetch?: (keepUrls: Set<string>) => void;
+}
+
 /** Standard page capability targeted by the staged adapter migration. */
 export interface GalleryAdapter {
   loadInitialPage: (doc: Document, url: string) => Promise<GalleryPage>;
@@ -14,22 +32,22 @@ export interface SiteReaderCloseContext {
 
 export interface SiteAdapter extends GalleryAdapter {
   name: string;
+  scrollPolicy?: SiteScrollPolicy;
   
   // Match the adapter against current URL or DOM
   match: (url: string, doc: Document) => boolean;
 
   // Given an image url/link, fetch the actual image URL
-  resolveImage(url: string, ...args: any[]): Promise<ResolvedImage | null>;
+  resolveImage(url: string, context: ImageResolveContext): Promise<ResolvedImage | null>;
+
+  // Optional adapter-owned queue controls; direct URL sites need none.
+  imageRequestQueue?: ImageRequestQueueHooks;
 
   // Optional conversion step for sources that are not directly displayable.
   materializeImage?: (
     resolved: ResolvedImage,
     signal: AbortSignal,
   ) => Promise<ResolvedImage | null>;
-
-  // Optional: on a large reader jump, abandon still-queued prefetch work for
-  // images the user skipped past. Already-running work is left alone.
-  cancelPrefetch?: (keepUrls: Set<string>) => void;
 
   // UI helpers
   getContainer: () => HTMLElement | null; // Used for float control positioning

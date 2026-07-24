@@ -15,6 +15,7 @@ const emptyDocument = {
 test('new-site template supplies direct resolve and standard preview capabilities', async () => {
   const adapter = createSiteAdapterTemplate({
     name: 'Template test',
+    scrollPolicy: { defaultEnabled: false, configurable: true },
     match: url => url.includes('example.test'),
     extractItems: () => [
       {
@@ -34,8 +35,12 @@ test('new-site template supplies direct resolve and standard preview capabilitie
   });
 
   await assertAdapterInitialPageContract(adapter, emptyDocument, 'https://example.test/gallery');
-  assert.deepEqual(await adapter.resolveImage('https://example.test/image-1.jpg'), {
+  assert.deepEqual(adapter.scrollPolicy, { defaultEnabled: false, configurable: true });
+  assert.deepEqual(await adapter.resolveImage('https://example.test/image-1.jpg', {
+    priority: 100,
+    force: false,
+    signal: new AbortController().signal,
+  }), {
     src: 'https://example.test/image-1.jpg',
   });
 });
-

@@ -17,6 +17,15 @@ interface Job<T> {
   reject: (reason: unknown) => void;
   priority: number;
   seq: number;
+  key?: string;
+  signal?: AbortSignal;
+  removeAbortListener?: () => void;
+}
+
+export interface NetLimiterRunOptions {
+  priority?: number;
+  key?: string;
+  signal?: AbortSignal;
 }
 
 export interface LimiterClock {
@@ -49,17 +58,45 @@ export class NetLimiter {
    * Schedule a network task. Higher `priority` runs first when a slot frees;
    * ties fall back to FIFO so ordering stays predictable.
    */
-  run<T>(task: () => Promise<T>, priority = 0): Promise<T> {
+  run<T>(task: () => Promise<T>, options: number | NetLimiterRunOptions = 0): Promise<T> {
+    const normalized = typeof options === 'number' ? { priority: options } : options;
     return new Promise<T>((resolve, reject) => {
-      this.queue.push({
+      if (normalized.signal?.aborted) {
+        reject(new DOMException('Request cancelled', 'AbortError'));
+        return;
+      }
+      const job: Job<unknown> = {
         run: task as () => Promise<unknown>,
         resolve: resolve as (value: unknown) => void,
         reject,
-        priority,
+        priority: normalized.priority ?? 0,
         seq: this.seq++,
-      });
+        key: normalized.key,
+        signal: normalized.signal,
+      };
+      this.queue.push(job);
+      if (normalized.signal) {
+        const onAbort = () => {
+          const index = this.queue.indexOf(job);
+          if (index === -1) return;
+          this.queue.splice(index, 1);
+          job.removeAbortListener?.();
+          reject(new DOMException('Request cancelled', 'AbortError'));
+        };
+        normalized.signal.addEventListener('abort', onAbort, { once: true });
+        job.removeAbortListener = () => normalized.signal?.removeEventListener('abort', onAbort);
+        if (normalized.signal.aborted) onAbort();
+      }
       this.pump();
     });
+  }
+
+  /** Raise the priority of still-queued jobs sharing a stable request key. */
+  promote(key: string, priority: number): void {
+    for (const job of this.queue) {
+      if (job.key === key && priority > job.priority) job.priority = priority;
+    }
+    this.pump();
   }
 
   /** Back off globally for `ms` — used when the server returns 429/503. */
@@ -77,11 +114,12 @@ export class NetLimiter {
    * for the new position instead of draining in insertion order. Rejected jobs
    * settle so awaiting callers don't hang.
    */
-  cancel(predicate: (priority: number, seq: number) => boolean): void {
+  cancel(predicate: (priority: number, seq: number, key?: string) => boolean): void {
     if (this.queue.length === 0) return;
     const kept: Job<unknown>[] = [];
     for (const job of this.queue) {
-      if (predicate(job.priority, job.seq)) {
+      if (predicate(job.priority, job.seq, job.key)) {
+        job.removeAbortListener?.();
         job.reject({ cancelled: true });
       } else {
         kept.push(job);
@@ -113,6 +151,7 @@ export class NetLimiter {
         }
       }
       const job = this.queue.splice(bestIdx, 1)[0];
+      job.removeAbortListener?.();
       this.active++;
 
       Promise.resolve().then(() => job.run()).then(

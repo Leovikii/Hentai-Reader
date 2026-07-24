@@ -1,6 +1,10 @@
 import { acquireImage, cancelImagePrefetch } from '../../services/image-load-runtime';
 import type { ImageLoadLease } from '../../services/image-load-service';
-import { LOAD_PRIORITY } from '../../state/load-policy';
+import {
+  getReaderPrefetchIndices,
+  LOAD_PRIORITY,
+  READER_PREFETCH,
+} from '../../state/load-policy';
 import type { ReaderSession } from '../reader-session';
 
 /**
@@ -13,12 +17,8 @@ import type { ReaderSession } from '../reader-session';
  * position immediately.
  *
  * The active runtime may delegate cancellation to a site limiter when needed.
- * The window is deliberately modest (5/2) to respect metered sites while
- * staying smooth on others.
+ * The window is bounded at 10/4; site concurrency limits still control bursts.
  */
-
-const AHEAD = 5;   // images to prefetch ahead in the travel direction
-const BEHIND = 2;  // keep two behind so small back-steps are instant
 
 export interface PrefetchController {
   /**
@@ -70,11 +70,10 @@ export function createPrefetchController(session: ReaderSession): PrefetchContro
     const total = session.imageCount;
     if (total === 0) return;
 
-    const lo = Math.max(0, center - (direction === 1 ? BEHIND : AHEAD));
-    const hi = Math.min(total - 1, center + (direction === 1 ? AHEAD : BEHIND));
+    const indices = getReaderPrefetchIndices(center, total, direction);
 
     const wanted = new Set<string>();
-    for (let i = lo; i <= hi; i++) {
+    for (const i of indices) {
       const url = urlAt(i);
       if (url) wanted.add(url);
     }
@@ -90,22 +89,15 @@ export function createPrefetchController(session: ReaderSession): PrefetchContro
     // set of URLs the new window still needs — the adapter cancels everything
     // else it has queued. On a normal ±1 step the windows overlap, so skip this:
     // cancelling work the step still wants would just stall it.
-    const jumped = lastCenter < 0 || Math.abs(center - lastCenter) > AHEAD + BEHIND;
+    const jumped = lastCenter < 0
+      || Math.abs(center - lastCenter) > READER_PREFETCH.ahead + READER_PREFETCH.behind;
     if (jumped) cancelImagePrefetch(wanted);
     lastCenter = center;
 
     // Prefetch nearest-first so the very next image lands soonest.
-    for (let d = 0; d <= Math.max(hi - center, center - lo); d++) {
-      const forward = center + direction * d;
-      if (forward >= lo && forward <= hi) {
-        const url = urlAt(forward);
-        if (url) ensureDownload(url);
-      }
-      const back = center - direction * d;
-      if (d > 0 && back >= lo && back <= hi) {
-        const url = urlAt(back);
-        if (url) ensureDownload(url);
-      }
+    for (const index of indices) {
+      const url = urlAt(index);
+      if (url) ensureDownload(url);
     }
   }
 

@@ -3,7 +3,7 @@ import { ImageLoadService, type ImageAcquireOptions } from './image-load-service
 import { MaterializeScheduler } from './materialize-scheduler';
 import { CFG } from '../state/config';
 
-const materializeScheduler = new MaterializeScheduler(CFG.maxConcurrent);
+const materializeScheduler = new MaterializeScheduler(CFG.imageMaterializeConcurrent);
 
 function loadImageBytes(src: string, signal: AbortSignal): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
@@ -37,8 +37,8 @@ function loadImageBytes(src: string, signal: AbortSignal): Promise<{ width: numb
 }
 
 const imageLoadService = new ImageLoadService({
-  resolve: async (url, nlToken, _force, priority) => {
-    return store.activeAdapter?.resolveImage(url, nlToken, priority) ?? null;
+  resolve: async (url, context) => {
+    return store.activeAdapter?.resolveImage(url, context) ?? null;
   },
   materialize: (url, resolved, signal, priority) => {
     const materialize = store.activeAdapter?.materializeImage;
@@ -53,6 +53,7 @@ const imageLoadService = new ImageLoadService({
   loadBytes: loadImageBytes,
   promote: (url, priority) => {
     materializeScheduler.promote(url, priority);
+    store.activeAdapter?.imageRequestQueue?.promote?.(url, priority);
   },
   revokeObjectUrl: src => URL.revokeObjectURL(src),
 });
@@ -74,5 +75,5 @@ export function getLatestCachedImage() {
 }
 
 export function cancelImagePrefetch(keepUrls: Set<string>) {
-  store.activeAdapter?.cancelPrefetch?.(keepUrls);
+  store.activeAdapter?.imageRequestQueue?.cancelPrefetch?.(keepUrls);
 }

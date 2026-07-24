@@ -4,7 +4,6 @@ export interface HUDConfig {
   status: HUDStatus;
   text: string;
   pageText?: string;
-  onClick?: () => void;
 }
 
 export interface StatusHUDHandle {
@@ -33,12 +32,6 @@ export function createStatusHUD(): StatusHUDHandle {
         ${config.pageText ? `<div class="sp-hud-page">${config.pageText}</div>` : ''}
       </div>
     `;
-
-    const box = container.querySelector('.sp-hud-box') as HTMLElement;
-    if (config.onClick) {
-      box.style.cursor = 'pointer';
-      box.onclick = config.onClick;
-    }
 
     container.classList.add('show');
   }

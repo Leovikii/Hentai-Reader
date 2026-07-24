@@ -1,14 +1,21 @@
 import type { GalleryItem, GalleryPage } from '../../core/gallery';
 import type { ResolvedImage } from '../../core/image';
-import type { SiteAdapter } from '../../core/site-adapter';
+import type {
+  ImageResolveContext,
+  ImageRequestQueueHooks,
+  SiteAdapter,
+  SiteScrollPolicy,
+} from '../../core/site-adapter';
 
 export interface SiteAdapterTemplateConfig {
   name: string;
+  scrollPolicy?: SiteScrollPolicy;
+  imageRequestQueue?: ImageRequestQueueHooks;
   match(url: string, doc: Document): boolean;
   extractItems(doc: Document, pageUrl: string): GalleryItem[];
   getNextUrl(doc: Document, pageUrl: string): string | null;
   getPrevUrl(doc: Document, pageUrl: string): string | null;
-  resolveImage?(url: string, nlToken?: string, priority?: number): Promise<ResolvedImage | null>;
+  resolveImage?(url: string, context: ImageResolveContext): Promise<ResolvedImage | null>;
   materializeImage?(resolved: ResolvedImage, signal: AbortSignal): Promise<ResolvedImage | null>;
   containerSelector: string;
   hiddenSelectors?: readonly string[];
@@ -40,6 +47,8 @@ function parsePage(
 export function createSiteAdapterTemplate(config: SiteAdapterTemplateConfig): SiteAdapter {
   const adapter: SiteAdapter = {
     name: config.name,
+    scrollPolicy: config.scrollPolicy,
+    imageRequestQueue: config.imageRequestQueue,
     match: config.match,
     loadInitialPage: async (doc, url) => parsePage(config, doc, url),
     async loadPage(url, signal) {

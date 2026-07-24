@@ -153,7 +153,7 @@ test('revokes an owned object URL when its byte load never succeeds', async () =
     loadBytes: async () => { throw new Error('broken blob'); },
     delay: noDelay,
     revokeObjectUrl: src => revoked.push(src),
-  }, { resolveAttempts: 1, nodeRetries: 0, plainRetries: 0 });
+  }, { resolveAttempts: 1, alternateSourceRetries: 0, freshResolveRetries: 0 });
 
   const lease = service.acquire('viewer', { intent: 'foreground', priority: 100 });
   assert.equal(await lease.result, null);
@@ -161,15 +161,16 @@ test('revokes an owned object URL when its byte load never succeeds', async () =
   lease.release();
 });
 
-test('uses the centralized resolve, node-switch and plain retry budgets', async () => {
-  const calls: Array<{ nl?: string; force: boolean }> = [];
+test('uses the centralized resolve, alternate-source and fresh retry budgets', async () => {
+  const calls: Array<{ token?: string; force: boolean }> = [];
   let downloads = 0;
   const service = new ImageLoadService({
-    resolve: async (_url, nl, force) => {
-      calls.push({ nl, force });
+    resolve: async (_url, context) => {
+      const { retryToken, force } = context;
+      calls.push({ token: retryToken, force });
       if (calls.length < 3) return null;
-      if (nl) return { src: 'node-src', nl: undefined };
-      return { src: 'plain-src', nl: 'node-token' };
+      if (retryToken) return { src: 'alternate-src' };
+      return { src: 'fresh-src', retryToken: 'alternate-token' };
     },
     loadBytes: async () => {
       downloads++;
@@ -177,18 +178,67 @@ test('uses the centralized resolve, node-switch and plain retry budgets', async 
       return { width: 10, height: 20 };
     },
     delay: noDelay,
-  }, { resolveAttempts: 4, nodeRetries: 3, plainRetries: 2 });
+  }, { resolveAttempts: 4, alternateSourceRetries: 3, freshResolveRetries: 2 });
 
   const lease = service.acquire('viewer', { intent: 'foreground', priority: 100 });
   assert.equal((await lease.result)?.width, 10);
   assert.deepEqual(calls, [
-    { nl: undefined, force: false },
-    { nl: undefined, force: true },
-    { nl: undefined, force: true },
-    { nl: 'node-token', force: true },
-    { nl: undefined, force: true },
+    { token: undefined, force: false },
+    { token: undefined, force: true },
+    { token: undefined, force: true },
+    { token: 'alternate-token', force: true },
+    { token: undefined, force: true },
   ]);
   assert.equal(downloads, 3);
+  lease.release();
+});
+
+test('aborts a timed-out byte attempt and switches to the alternate source', async () => {
+  const contexts: Array<{ token?: string; signal: AbortSignal }> = [];
+  const service = new ImageLoadService({
+    resolve: async (_url, context) => {
+      contexts.push({ token: context.retryToken, signal: context.signal });
+      return context.retryToken
+        ? { src: 'fast-source', loadTimeoutMs: 50 }
+        : { src: 'slow-source', retryToken: 'switch-source', loadTimeoutMs: 5 };
+    },
+    loadBytes: async (src, signal) => {
+      if (src === 'fast-source') return { width: 20, height: 30 };
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new Error('timed out')), { once: true });
+      });
+    },
+    delay: noDelay,
+  }, { resolveAttempts: 1, alternateSourceRetries: 1, freshResolveRetries: 0 });
+
+  const lease = service.acquire('viewer', { intent: 'foreground', priority: 100 });
+  assert.equal((await lease.result)?.src, 'fast-source');
+  assert.deepEqual(contexts.map(context => context.token), [undefined, 'switch-source']);
+  assert.equal(contexts[0].signal, contexts[1].signal);
+  lease.release();
+});
+
+test('stops a repeated candidate from consuming the alternate-source budget', async () => {
+  let resolves = 0;
+  let downloads = 0;
+  const service = new ImageLoadService({
+    resolve: async (_url, _context) => {
+      resolves++;
+      if (resolves === 3) return { src: 'fresh-plain' };
+      return { src: 'same-source', retryToken: 'same-token' };
+    },
+    loadBytes: async src => {
+      downloads++;
+      if (src === 'same-source') throw new Error('failed');
+      return { width: 10, height: 10 };
+    },
+    delay: noDelay,
+  }, { resolveAttempts: 1, alternateSourceRetries: 3, freshResolveRetries: 1 });
+
+  const lease = service.acquire('viewer', { intent: 'foreground', priority: 100 });
+  assert.equal((await lease.result)?.src, 'fresh-plain');
+  assert.equal(resolves, 3);
+  assert.equal(downloads, 2);
   lease.release();
 });
 
