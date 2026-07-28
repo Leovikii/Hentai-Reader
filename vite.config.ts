@@ -42,7 +42,7 @@ export default defineConfig({
           'GM_registerMenuCommand',
           'unsafeWindow',
         ],
-        license: 'MIT',
+        license: 'GPL-3.0-only',
       },
       build: {
         fileName: 'hentai-reader.user.js',

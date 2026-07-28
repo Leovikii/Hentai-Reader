@@ -4,12 +4,14 @@ import type {
   ImageResolveContext,
   ImageRequestQueueHooks,
   SiteAdapter,
+  ReaderPrefetchPolicy,
   SiteScrollPolicy,
 } from '../../core/site-adapter';
 
 export interface SiteAdapterTemplateConfig {
   name: string;
   scrollPolicy?: SiteScrollPolicy;
+  readerPrefetch?: ReaderPrefetchPolicy;
   imageRequestQueue?: ImageRequestQueueHooks;
   match(url: string, doc: Document): boolean;
   extractItems(doc: Document, pageUrl: string): GalleryItem[];
@@ -48,6 +50,7 @@ export function createSiteAdapterTemplate(config: SiteAdapterTemplateConfig): Si
   const adapter: SiteAdapter = {
     name: config.name,
     scrollPolicy: config.scrollPolicy,
+    readerPrefetch: config.readerPrefetch,
     imageRequestQueue: config.imageRequestQueue,
     match: config.match,
     loadInitialPage: async (doc, url) => parsePage(config, doc, url),

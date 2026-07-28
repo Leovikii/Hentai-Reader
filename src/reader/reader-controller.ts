@@ -20,6 +20,7 @@ import { ReaderSession } from './reader-session';
 import { createThumbnailController } from './controllers/thumbnail-controller';
 import { acquireImage, getCachedImage } from '../services/image-load-runtime';
 import { LOAD_PRIORITY } from '../state/load-policy';
+import type { ReaderPrefetchPolicy } from '../core/site-adapter';
 
 export interface ReaderControllerDeps {
   pageLoader: GalleryPageLoader;
@@ -28,6 +29,7 @@ export interface ReaderControllerDeps {
   createDriver: ReaderDriverFactory;
   scroll: ReaderScrollBridge;
   context: ReaderAppContext;
+  prefetchPolicy?: ReaderPrefetchPolicy;
 }
 
 const RETURN_GEOMETRY_RADIUS = 5;
@@ -68,7 +70,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     }
   }
 
-  const prefetch = createPrefetchController(session);
+  const prefetch = createPrefetchController(session, deps.prefetchPolicy);
   const thumbnailController = createThumbnailController(session, deps.scroll, {
     acquire: acquireImage,
     priority: LOAD_PRIORITY.thumbnail,
@@ -267,6 +269,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
       switch (phase) {
         case 'error': shell.showStatus({ status: 'error', text: i18n.loadFailed }); break;
         case 'resolving': shell.showStatus({ status: 'loading', text: i18n.resolvingImage }); break;
+        case 'switching-source': shell.showStatus({ status: 'loading', text: i18n.switchingImageSource }); break;
         case 'downloading': shell.showStatus({ status: 'loading', text: i18n.downloading }); break;
         case 'loaded': shell.hideStatus(); break;
       }

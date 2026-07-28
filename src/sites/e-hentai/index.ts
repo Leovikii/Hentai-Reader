@@ -1,6 +1,6 @@
-import type { ImageResolveContext, SiteAdapter } from '../../core/site-adapter';
-import { NetLimiter } from '../../services/net-limiter';
-import { LOAD_PRIORITY } from '../../state/load-policy';
+import type { ImageResolveContext, SiteAdapter } from '../../core/site-adapter.ts';
+import { NetLimiter } from '../../services/net-limiter.ts';
+import { LOAD_PRIORITY } from '../../state/load-policy.ts';
 import {
   buildEHentaiViewerUrl,
   extractEHentaiItems,
@@ -8,12 +8,18 @@ import {
   getEHentaiPrevUrl,
   parseEHentaiPageMetadata,
   parseEHentaiViewer,
-} from './gallery';
+} from './gallery.ts';
 
-const parser = new DOMParser();
+let parser: DOMParser | undefined;
+function parseDocument(html: string): Document {
+  parser ??= new DOMParser();
+  return parser.parseFromString(html, 'text/html');
+}
 const PAGE_FETCH_PRIORITY = LOAD_PRIORITY.pageHtml;
 const REQUEST_POLICY = {
   concurrent: 3,
+  prefetchAhead: 5,
+  prefetchBehind: 2,
   rateLimitCooldownMs: 5000,
   foregroundLoadTimeoutMs: 12_000,
   backgroundLoadTimeoutMs: 20_000,
@@ -26,10 +32,14 @@ function limitedFetch(
   options: { priority?: number; key?: string; signal?: AbortSignal; fresh?: boolean } = {},
 ): Promise<Response> {
   return requestLimiter.run(
-    () => fetch(url, {
-      signal: options.signal,
-      ...(options.fresh ? { cache: 'no-store' as RequestCache } : {}),
-    }),
+    async () => {
+      const response = await fetch(url, {
+        signal: options.signal,
+        ...(options.fresh ? { cache: 'no-store' as RequestCache } : {}),
+      });
+      enforceRateLimit(response);
+      return response;
+    },
     { priority: options.priority, key: options.key, signal: options.signal },
   );
 }
@@ -42,6 +52,10 @@ function enforceRateLimit(response: Response): void {
 
 export const EHentaiAdapter: SiteAdapter = {
   name: 'E-Hentai/ExHentai',
+  readerPrefetch: {
+    ahead: REQUEST_POLICY.prefetchAhead,
+    behind: REQUEST_POLICY.prefetchBehind,
+  },
 
   match(url: string) {
     return /https?:\/\/(e-|ex)hentai\.org\/(g|s)\//.test(url);
@@ -71,11 +85,10 @@ export const EHentaiAdapter: SiteAdapter = {
       signal: context.signal,
       fresh: context.force || !!context.retryToken,
     });
-    enforceRateLimit(response);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
     const html = await response.text();
-    const doc = parser.parseFromString(html, 'text/html');
+    const doc = parseDocument(html);
     const viewer = parseEHentaiViewer(doc);
     if (!viewer) throw new Error('Image not found');
     return {
@@ -89,10 +102,9 @@ export const EHentaiAdapter: SiteAdapter = {
 
   async loadPage(url: string, signal?: AbortSignal) {
     const response = await limitedFetch(url, { priority: PAGE_FETCH_PRIORITY, key: url, signal });
-    enforceRateLimit(response);
     if (!response.ok) throw new Error('Failed to fetch page');
     const html = await response.text();
-    const doc = parser.parseFromString(html, 'text/html');
+    const doc = parseDocument(html);
     return {
       pageUrl: url,
       items: extractEHentaiItems(doc),

@@ -170,7 +170,10 @@ test('uses the centralized resolve, alternate-source and fresh retry budgets', a
       calls.push({ token: retryToken, force });
       if (calls.length < 3) return null;
       if (retryToken) return { src: 'alternate-src' };
-      return { src: 'fresh-src', retryToken: 'alternate-token' };
+      return {
+        src: calls.length >= 5 ? 'fresh-second-src' : 'fresh-src',
+        retryToken: 'alternate-token',
+      };
     },
     loadBytes: async () => {
       downloads++;
@@ -195,6 +198,7 @@ test('uses the centralized resolve, alternate-source and fresh retry budgets', a
 
 test('aborts a timed-out byte attempt and switches to the alternate source', async () => {
   const contexts: Array<{ token?: string; signal: AbortSignal }> = [];
+  const phases: string[] = [];
   const service = new ImageLoadService({
     resolve: async (_url, context) => {
       contexts.push({ token: context.retryToken, signal: context.signal });
@@ -212,10 +216,90 @@ test('aborts a timed-out byte attempt and switches to the alternate source', asy
   }, { resolveAttempts: 1, alternateSourceRetries: 1, freshResolveRetries: 0 });
 
   const lease = service.acquire('viewer', { intent: 'foreground', priority: 100 });
+  const unsubscribe = lease.subscribe(phase => phases.push(phase));
   assert.equal((await lease.result)?.src, 'fast-source');
   assert.deepEqual(contexts.map(context => context.token), [undefined, 'switch-source']);
   assert.equal(contexts[0].signal, contexts[1].signal);
+  assert.equal(phases.includes('switching-source'), true);
+  unsubscribe();
   lease.release();
+});
+
+test('retains an alternate token across a transient resolver failure', async () => {
+  const tokens: Array<string | undefined> = [];
+  let alternateResolves = 0;
+  const service = new ImageLoadService({
+    resolve: async (_url, context) => {
+      tokens.push(context.retryToken);
+      if (!context.retryToken) return { src: 'failed-source', retryToken: 'next-node' };
+      alternateResolves++;
+      return alternateResolves === 1 ? null : { src: 'healthy-source' };
+    },
+    loadBytes: async src => {
+      if (src === 'failed-source') throw new Error('simulated failed source');
+      return { width: 20, height: 30 };
+    },
+    delay: noDelay,
+  }, { resolveAttempts: 1, alternateSourceRetries: 2, freshResolveRetries: 0 });
+
+  const lease = service.acquire('viewer', { intent: 'foreground', priority: 100 });
+  assert.equal((await lease.result)?.src, 'healthy-source');
+  assert.deepEqual(tokens, [undefined, 'next-node', 'next-node']);
+  lease.release();
+});
+
+test('does not switch sources for speculative background consumers', async () => {
+  for (const intent of ['warmup', 'thumbnail'] as const) {
+    const contexts: Array<string | undefined> = [];
+    const phases: string[] = [];
+    const service = new ImageLoadService({
+      resolve: async (_url, context) => {
+        contexts.push(context.retryToken);
+        return context.retryToken
+          ? { src: 'alternate-source' }
+          : { src: 'failed-source', retryToken: 'alternate-token' };
+      },
+      loadBytes: async () => { throw new Error('simulated unavailable source'); },
+      delay: noDelay,
+    }, { resolveAttempts: 1, alternateSourceRetries: 3, freshResolveRetries: 2 });
+
+    const lease = service.acquire(`viewer-${intent}`, { intent, priority: 10 });
+    const unsubscribe = lease.subscribe(phase => phases.push(phase));
+    assert.equal(await lease.result, null);
+    assert.deepEqual(contexts, [undefined]);
+    assert.equal(phases.includes('switching-source'), false);
+    unsubscribe();
+    lease.release();
+  }
+});
+
+test('upgrades a shared background load when a demand consumer joins', async () => {
+  let rejectInitial!: (error: Error) => void;
+  const initialAttempt = new Promise<never>((_resolve, reject) => { rejectInitial = reject; });
+  const contexts: Array<string | undefined> = [];
+  const service = new ImageLoadService({
+    resolve: async (_url, context) => {
+      contexts.push(context.retryToken);
+      return context.retryToken
+        ? { src: 'healthy-source' }
+        : { src: 'failed-source', retryToken: 'alternate-token' };
+    },
+    loadBytes: async src => src === 'failed-source'
+      ? initialAttempt
+      : { width: 20, height: 30 },
+    delay: noDelay,
+  }, { resolveAttempts: 1, alternateSourceRetries: 1, freshResolveRetries: 0 });
+
+  const warmup = service.acquire('viewer', { intent: 'warmup', priority: 5 });
+  await Promise.resolve();
+  const foreground = service.acquire('viewer', { intent: 'foreground', priority: 100 });
+  rejectInitial(new Error('simulated unavailable source'));
+
+  assert.equal((await foreground.result)?.src, 'healthy-source');
+  assert.equal(foreground.result, warmup.result);
+  assert.deepEqual(contexts, [undefined, 'alternate-token']);
+  warmup.release();
+  foreground.release();
 });
 
 test('stops a repeated candidate from consuming the alternate-source budget', async () => {
@@ -239,6 +323,30 @@ test('stops a repeated candidate from consuming the alternate-source budget', as
   assert.equal((await lease.result)?.src, 'fresh-plain');
   assert.equal(resolves, 3);
   assert.equal(downloads, 2);
+  lease.release();
+});
+
+test('does not return to an already failed source after an alternate was attempted', async () => {
+  const contexts: Array<string | undefined> = [];
+  const downloads: string[] = [];
+  const service = new ImageLoadService({
+    resolve: async (_url, context) => {
+      contexts.push(context.retryToken);
+      return context.retryToken
+        ? { src: 'alternate-source' }
+        : { src: 'original-source', retryToken: 'alternate-token' };
+    },
+    loadBytes: async src => {
+      downloads.push(src);
+      throw new Error('simulated unavailable source');
+    },
+    delay: noDelay,
+  }, { resolveAttempts: 1, alternateSourceRetries: 1, freshResolveRetries: 2 });
+
+  const lease = service.acquire('viewer', { intent: 'foreground', priority: 100 });
+  assert.equal(await lease.result, null);
+  assert.deepEqual(contexts, [undefined, 'alternate-token', undefined]);
+  assert.deepEqual(downloads, ['original-source', 'alternate-source']);
   lease.release();
 });
 

@@ -14,6 +14,12 @@ export interface SiteScrollPolicy {
   configurable?: boolean;
 }
 
+/** Optional site-specific Reader byte-prefetch window. */
+export interface ReaderPrefetchPolicy {
+  ahead: number;
+  behind: number;
+}
+
 export interface ImageRequestQueueHooks {
   promote?: (url: string, priority: number) => void;
   cancelPrefetch?: (keepUrls: Set<string>) => void;
@@ -33,6 +39,7 @@ export interface SiteReaderCloseContext {
 export interface SiteAdapter extends GalleryAdapter {
   name: string;
   scrollPolicy?: SiteScrollPolicy;
+  readerPrefetch?: ReaderPrefetchPolicy;
   
   // Match the adapter against current URL or DOM
   match: (url: string, doc: Document) => boolean;
