@@ -55,6 +55,11 @@ Gallery 索引派生，不是站点适配器提供的持久身份。新站点不
 错误和 cooldown。节点切换次数与普通重试次数由 `ImageLoadService` 控制，适配器
 不能再嵌套重试。
 
+Reader 默认保留前方 6 张、后方 3 张的字节预取窗口。需要先请求 viewer HTML、
+限流严格或单图成本较高的站点，可通过通用 `readerPrefetch: { ahead, behind }`
+声明更保守的窗口；直接 URL 站点通常无需覆盖。该配置只限制窗口规模，不替代
+`NetLimiter` 的并发、优先级和 429/503 cooldown。
+
 `materializeImage()` 必须：
 
 - 接收并传递 `AbortSignal`。

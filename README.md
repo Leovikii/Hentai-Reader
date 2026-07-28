@@ -82,7 +82,7 @@ docs/                             # Architecture, new-site guide, and backlog
 
 ## License
 
-MIT
+GNU General Public License v3.0 only (`GPL-3.0-only`). See [LICENSE](LICENSE).
 
 ## Development Documentation
 

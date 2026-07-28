@@ -1,5 +1,6 @@
 import { acquireImage, cancelImagePrefetch } from '../../services/image-load-runtime';
 import type { ImageLoadLease } from '../../services/image-load-service';
+import type { ReaderPrefetchPolicy } from '../../core/site-adapter';
 import {
   getReaderPrefetchIndices,
   LOAD_PRIORITY,
@@ -17,7 +18,7 @@ import type { ReaderSession } from '../reader-session';
  * position immediately.
  *
  * The active runtime may delegate cancellation to a site limiter when needed.
- * The window is bounded at 10/4; site concurrency limits still control bursts.
+ * The default window is 6/3; adapters may declare a more conservative window.
  */
 
 export interface PrefetchController {
@@ -36,7 +37,10 @@ export interface PrefetchController {
   clear(): void;
 }
 
-export function createPrefetchController(session: ReaderSession): PrefetchController {
+export function createPrefetchController(
+  session: ReaderSession,
+  policy: ReaderPrefetchPolicy = READER_PREFETCH,
+): PrefetchController {
   const downloads = new Map<string, ImageLoadLease>();
   let lastCenter = -1;  // previous window centre; -1 = fresh (treat next as a jump)
 
@@ -70,7 +74,7 @@ export function createPrefetchController(session: ReaderSession): PrefetchContro
     const total = session.imageCount;
     if (total === 0) return;
 
-    const indices = getReaderPrefetchIndices(center, total, direction);
+    const indices = getReaderPrefetchIndices(center, total, direction, policy);
 
     const wanted = new Set<string>();
     for (const i of indices) {
@@ -90,7 +94,7 @@ export function createPrefetchController(session: ReaderSession): PrefetchContro
     // else it has queued. On a normal ±1 step the windows overlap, so skip this:
     // cancelling work the step still wants would just stall it.
     const jumped = lastCenter < 0
-      || Math.abs(center - lastCenter) > READER_PREFETCH.ahead + READER_PREFETCH.behind;
+      || Math.abs(center - lastCenter) > policy.ahead + policy.behind;
     if (jumped) cancelImagePrefetch(wanted);
     lastCenter = center;
 

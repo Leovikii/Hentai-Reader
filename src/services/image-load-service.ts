@@ -192,22 +192,27 @@ export class ImageLoadService {
 
     let loaded = await this.tryLoad(url, resolved, load);
     let retryToken = resolved.retryToken;
-    const alternateCandidates = new Set([this.candidateKey(resolved)]);
+    const attemptedSources = new Set([resolved.src]);
+    let attemptedAlternateResolve = false;
 
     for (let attempt = 0;
       !loaded && retryToken && attempt < this.policy.alternateSourceRetries && !signal.aborted;
       attempt++) {
+      this.setPhase(url, 'switching-source');
+      attemptedAlternateResolve = true;
       const candidate = await this.resolve(url, retryToken, true, load);
       const next = await this.materialize(url, candidate, load);
-      if (!next?.src) break;
-      const candidateKey = this.candidateKey(next);
-      if (alternateCandidates.has(candidateKey)) {
-        this.discard(url, next);
-        break;
-      }
-      alternateCandidates.add(candidateKey);
-      this.discard(url, resolved);
+      // A transient viewer/metadata failure must not discard the alternate
+      // token. Retry the same token within the existing bounded budget.
+      if (!next?.src) continue;
       retryToken = next.retryToken;
+      if (attemptedSources.has(next.src)) {
+        this.discard(url, next);
+        if (!retryToken) break;
+        continue;
+      }
+      attemptedSources.add(next.src);
+      this.discard(url, resolved);
       resolved = next;
       loaded = await this.tryLoad(url, next, load);
     }
@@ -220,6 +225,11 @@ export class ImageLoadService {
       const candidate = await this.resolve(url, undefined, true, load);
       const next = await this.materialize(url, candidate, load);
       if (!next?.src) continue;
+      if (attemptedAlternateResolve && attemptedSources.has(next.src)) {
+        this.discard(url, next);
+        break;
+      }
+      attemptedSources.add(next.src);
       this.discard(url, resolved);
       resolved = next;
       loaded = await this.tryLoad(url, next, load);
@@ -288,10 +298,6 @@ export class ImageLoadService {
     } catch {
       return null;
     }
-  }
-
-  private candidateKey(resolved: ResolvedImage): string {
-    return `${resolved.src}\u0000${resolved.retryToken ?? ''}`;
   }
 
   private async materialize(

@@ -25,6 +25,7 @@ export type ImageLoadIntent =
 export type ImageLoadPhase =
   | 'idle'
   | 'resolving'
+  | 'switching-source'
   | 'downloading'
   | 'ready'
   | 'error'

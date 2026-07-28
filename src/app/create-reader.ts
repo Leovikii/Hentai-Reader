@@ -49,6 +49,7 @@ export function createReader(pageLoader: GalleryPageLoader): ReaderHandle {
         pageSize: store.perPage,
       }),
     },
+    prefetchPolicy: store.activeAdapter?.readerPrefetch,
     onLoadNextPage: (page) => {
       store.currPage++;
       processBatch(page.items, store.currPage, undefined, false, page.pageUrl);

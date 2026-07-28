@@ -59,6 +59,31 @@ test('keeps a single wake timer and reschedules it when cooldown is extended', a
   assert.equal(ran, true);
 });
 
+test('honors a cooldown armed inside a failing request before pumping the queue', async () => {
+  const clock = new FakeClock();
+  const limiter = new NetLimiter(1, clock);
+  const order: string[] = [];
+
+  const limited = limiter.run(async () => {
+    order.push('limited');
+    limiter.pauseFor(100);
+    throw new Error('HTTP 503');
+  });
+  const queued = limiter.run(async () => { order.push('queued'); });
+
+  await assert.rejects(limited, /503/);
+  await flushPromises();
+  assert.deepEqual(order, ['limited']);
+
+  clock.advance(109);
+  await flushPromises();
+  assert.deepEqual(order, ['limited']);
+
+  clock.advance(1);
+  await queued;
+  assert.deepEqual(order, ['limited', 'queued']);
+});
+
 test('runs higher priority queued work first and preserves FIFO for ties', async () => {
   const limiter = new NetLimiter(1);
   const blocker = deferred<void>();

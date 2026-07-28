@@ -31,7 +31,7 @@ export const i18n = {
   // Overlay Network Status
   waitingForNetwork: isZH ? '等待网络请求...' : 'Waiting for network...',
   downloading: isZH ? '下载中...' : 'Downloading...',
-  requestingNewNode: isZH ? '正在请求新节点...' : 'Requesting New Node...',
+  switchingImageSource: isZH ? '切换节点中...' : 'Switching source...',
   reloading: isZH ? '重新加载中...' : 'Reloading...',
   loadFailed: isZH ? '加载失败' : 'Load Failed',
   waitImagesToLoad: isZH ? '请等待图片加载' : 'Please wait for images to load',
