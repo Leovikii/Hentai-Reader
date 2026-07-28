@@ -248,6 +248,60 @@ test('retains an alternate token across a transient resolver failure', async () 
   lease.release();
 });
 
+test('does not switch sources for speculative background consumers', async () => {
+  for (const intent of ['warmup', 'thumbnail'] as const) {
+    const contexts: Array<string | undefined> = [];
+    const phases: string[] = [];
+    const service = new ImageLoadService({
+      resolve: async (_url, context) => {
+        contexts.push(context.retryToken);
+        return context.retryToken
+          ? { src: 'alternate-source' }
+          : { src: 'failed-source', retryToken: 'alternate-token' };
+      },
+      loadBytes: async () => { throw new Error('simulated unavailable source'); },
+      delay: noDelay,
+    }, { resolveAttempts: 1, alternateSourceRetries: 3, freshResolveRetries: 2 });
+
+    const lease = service.acquire(`viewer-${intent}`, { intent, priority: 10 });
+    const unsubscribe = lease.subscribe(phase => phases.push(phase));
+    assert.equal(await lease.result, null);
+    assert.deepEqual(contexts, [undefined]);
+    assert.equal(phases.includes('switching-source'), false);
+    unsubscribe();
+    lease.release();
+  }
+});
+
+test('upgrades a shared background load when a demand consumer joins', async () => {
+  let rejectInitial!: (error: Error) => void;
+  const initialAttempt = new Promise<never>((_resolve, reject) => { rejectInitial = reject; });
+  const contexts: Array<string | undefined> = [];
+  const service = new ImageLoadService({
+    resolve: async (_url, context) => {
+      contexts.push(context.retryToken);
+      return context.retryToken
+        ? { src: 'healthy-source' }
+        : { src: 'failed-source', retryToken: 'alternate-token' };
+    },
+    loadBytes: async src => src === 'failed-source'
+      ? initialAttempt
+      : { width: 20, height: 30 },
+    delay: noDelay,
+  }, { resolveAttempts: 1, alternateSourceRetries: 1, freshResolveRetries: 0 });
+
+  const warmup = service.acquire('viewer', { intent: 'warmup', priority: 5 });
+  await Promise.resolve();
+  const foreground = service.acquire('viewer', { intent: 'foreground', priority: 100 });
+  rejectInitial(new Error('simulated unavailable source'));
+
+  assert.equal((await foreground.result)?.src, 'healthy-source');
+  assert.equal(foreground.result, warmup.result);
+  assert.deepEqual(contexts, [undefined, 'alternate-token']);
+  warmup.release();
+  foreground.release();
+});
+
 test('stops a repeated candidate from consuming the alternate-source budget', async () => {
   let resolves = 0;
   let downloads = 0;

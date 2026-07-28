@@ -73,6 +73,7 @@ const defaultPolicy: ImageLoadPolicy = {
 interface ActiveLoad {
   controller: AbortController;
   leases: Set<symbol>;
+  sourceRetryLeases: Set<symbol>;
   priority: number;
   result: Promise<LoadedImage | null>;
 }
@@ -109,6 +110,7 @@ export class ImageLoadService {
     let load = this.active.get(url);
     if (load) {
       load.leases.add(token);
+      if (this.canRetrySource(options.intent)) load.sourceRetryLeases.add(token);
       if (options.priority > load.priority) {
         load.priority = options.priority;
         this.deps.promote?.(url, options.priority);
@@ -120,6 +122,7 @@ export class ImageLoadService {
     load = {
       controller,
       leases: new Set([token]),
+      sourceRetryLeases: new Set(this.canRetrySource(options.intent) ? [token] : []),
       priority: options.priority,
       result: Promise.resolve(null),
     };
@@ -196,7 +199,8 @@ export class ImageLoadService {
     let attemptedAlternateResolve = false;
 
     for (let attempt = 0;
-      !loaded && retryToken && attempt < this.policy.alternateSourceRetries && !signal.aborted;
+      !loaded && retryToken && load.sourceRetryLeases.size > 0
+        && attempt < this.policy.alternateSourceRetries && !signal.aborted;
       attempt++) {
       this.setPhase(url, 'switching-source');
       attemptedAlternateResolve = true;
@@ -218,7 +222,8 @@ export class ImageLoadService {
     }
 
     for (let attempt = 0;
-      !loaded && attempt < this.policy.freshResolveRetries && !signal.aborted;
+      !loaded && load.sourceRetryLeases.size > 0
+        && attempt < this.policy.freshResolveRetries && !signal.aborted;
       attempt++) {
       await this.wait(signal);
       if (signal.aborted) break;
@@ -386,11 +391,14 @@ export class ImageLoadService {
 
   private release(url: string, token: symbol): void {
     const active = this.active.get(url);
-    if (active?.leases.delete(token) && active.leases.size === 0) {
-      active.controller.abort();
-      this.active.delete(url);
-      this.setPhase(url, 'cancelled');
-      return;
+    if (active?.leases.delete(token)) {
+      active.sourceRetryLeases.delete(token);
+      if (active.leases.size === 0) {
+        active.controller.abort();
+        this.active.delete(url);
+        this.setPhase(url, 'cancelled');
+        return;
+      }
     }
 
     const cached = this.cache.get(url);
@@ -401,6 +409,11 @@ export class ImageLoadService {
     if (this.phases.get(url) === phase) return;
     this.phases.set(url, phase);
     this.listeners.get(url)?.forEach(listener => listener(phase));
+  }
+
+  /** Background speculation must not fan one failed byte request into a node switch. */
+  private canRetrySource(intent: ImageLoadIntent): boolean {
+    return intent === 'foreground' || intent === 'neighbor' || intent === 'scroll';
   }
 
   private touchCache(url: string, entry: CacheEntry): void {
