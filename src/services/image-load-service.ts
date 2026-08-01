@@ -372,11 +372,18 @@ export class ImageLoadService {
   ): Promise<ResolvedImage | null> {
     if (!resolved?.src || load.controller.signal.aborted) return resolved;
     if (!this.deps.materialize) return resolved;
+    const parentSignal = load.controller.signal;
+    const attemptController = new AbortController();
+    const abortAttempt = () => attemptController.abort();
+    parentSignal.addEventListener('abort', abortAttempt, { once: true });
+    const timeout = resolved.loadTimeoutMs && resolved.loadTimeoutMs > 0
+      ? setTimeout(abortAttempt, resolved.loadTimeoutMs)
+      : null;
     try {
       const materialized = await this.deps.materialize(
         url,
         resolved,
-        load.controller.signal,
+        attemptController.signal,
         load.priority,
       );
       if (!materialized) this.discard(url, resolved);
@@ -384,6 +391,9 @@ export class ImageLoadService {
     } catch {
       this.discard(url, resolved);
       return null;
+    } finally {
+      if (timeout !== null) clearTimeout(timeout);
+      parentSignal.removeEventListener('abort', abortAttempt);
     }
   }
 

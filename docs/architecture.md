@@ -67,6 +67,8 @@ viewer URL
 
 - `ImageLoadService` 是进行中任务、重试、缓存、phase 和租约的唯一所有者。
 - 同一 viewer URL 的多个消费者共享一个生命周期；更高优先级需求提升原任务。
+- 适配器发布的 `loadTimeoutMs` 是单次来源尝试时限，同时覆盖可选 materialize 与最终字节
+  验证；单次超时只能中止该次尝试并进入统一有界重试，不得取消仍有其他消费者的共享生命周期。
 - 只有前台、Reader 邻页和卷轴等实时需求可以使用完整来源恢复链；纯投机任务失败后不应
   扩大节点切换和重试成本。
 - 默认图片缓存有界并保护活跃租约；淘汰受管 Object URL 时由服务 revoke。
@@ -161,6 +163,8 @@ viewer URL
 - `aid/scramble_id` 属于不透明站点元数据；反乱序实现位于 materializer。
 - 下载、`createImageBitmap`、Canvas 重排和 Blob 导出必须可取消；转换并发为 1，导出后立即
   关闭 Bitmap、缩小 OffscreenCanvas backing store，并把已知尺寸交给共享加载层复用。
+- 前台来源尝试时限为 20 秒，后台为 30 秒；超时沿用共享有界重试。串行 materialize 下的
+  极限零停顿远跳允许出现有 HUD 的等待，但不得阻塞导航、关闭或让 Blob/DOM 随页码增长。
 - 解码结果是受统一生命周期管理的 Object URL；正在显示的卷轴图片持有租约。
 - 所有权型资源按 24 个 Object URL 和 96 MiB Blob 软上限治理；仅这类卷轴图片由
   IntersectionObserver 在约 6 个视口外恢复占位并释放租约，普通远程图片不虚拟化。

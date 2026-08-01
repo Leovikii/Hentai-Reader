@@ -10,7 +10,10 @@ export interface ResolvedImage {
   };
   /** Opaque token for resolving an alternate source after this source fails. */
   retryToken?: string;
-  /** Optional deadline for one byte-load attempt; adapters choose the policy. */
+  /**
+   * Optional deadline for one source attempt, including adapter materialization
+   * and the final byte-load verification. Adapters choose the policy.
+   */
   loadTimeoutMs?: number;
   /** Opaque adapter-owned data consumed by its optional materializer. */
   materializeData?: unknown;

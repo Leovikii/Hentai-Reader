@@ -1,7 +1,9 @@
 import type { SiteAdapter } from '../../core/site-adapter';
 import type { GalleryItem } from '../../core/gallery';
+import { LOAD_PRIORITY } from '../../state/load-policy';
 import {
   create18ComicBrowserMaterializer,
+  get18ComicImageLoadTimeout,
   resolve18ComicSource,
 } from './materializer';
 
@@ -116,11 +118,15 @@ export const Comic18Adapter: SiteAdapter = {
     };
   },
 
-  async resolveImage(url: string) {
+  async resolveImage(url: string, context) {
+    const loadTimeoutMs = get18ComicImageLoadTimeout(
+      context.priority,
+      LOAD_PRIORITY.foreground,
+    );
     try {
-      return resolve18ComicSource(url);
+      return { ...resolve18ComicSource(url), loadTimeoutMs };
     } catch {
-      return { src: url };
+      return { src: url, loadTimeoutMs };
     }
   },
 

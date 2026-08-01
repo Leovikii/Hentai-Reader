@@ -490,6 +490,45 @@ test('exposes source dimension metadata while bytes load without treating it as 
   lease.release();
 });
 
+test('aborts a timed-out materialization attempt without cancelling the shared lifecycle', async () => {
+  let resolves = 0;
+  const materializeSignals: AbortSignal[] = [];
+  const resolveSignals: AbortSignal[] = [];
+  const service = new ImageLoadService({
+    resolve: async (_url, context) => {
+      resolves++;
+      resolveSignals.push(context.signal);
+      return resolves === 1
+        ? { src: 'stalled-source', materializeData: { kind: 'test' }, loadTimeoutMs: 5 }
+        : { src: 'healthy-source', materializeData: { kind: 'test' }, loadTimeoutMs: 50 };
+    },
+    materialize: async (_url, resolved, signal) => {
+      materializeSignals.push(signal);
+      if (resolved.src === 'healthy-source') {
+        return {
+          src: 'blob:ready',
+          ownsObjectUrl: true,
+          decodedDimensions: { width: 20, height: 30 },
+        };
+      }
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new Error('timed out')), { once: true });
+      });
+    },
+    loadBytes: async () => { throw new Error('decoded materialization should skip byte loading'); },
+    delay: noDelay,
+  }, { resolveAttempts: 2, alternateSourceRetries: 0, freshResolveRetries: 0 });
+
+  const lease = service.acquire('viewer', { intent: 'foreground', priority: 100 });
+  assert.equal((await lease.result)?.src, 'blob:ready');
+  assert.equal(resolves, 2);
+  assert.equal(materializeSignals[0].aborted, true);
+  assert.equal(materializeSignals[1].aborted, false);
+  assert.equal(resolveSignals[0], resolveSignals[1]);
+  assert.equal(resolveSignals[0].aborted, false);
+  lease.release();
+});
+
 test('reuses dimensions from an already-decoded materialized Blob', async () => {
   let byteLoads = 0;
   const service = new ImageLoadService({

@@ -32,6 +32,20 @@ export interface Comic18MaterializerDeps {
   getSegmentCount(aid: string, imageId: string): number | undefined;
 }
 
+const IMAGE_LOAD_TIMEOUT = {
+  foreground: 20_000,
+  background: 30_000,
+} as const;
+
+export function get18ComicImageLoadTimeout(
+  priority: number,
+  foregroundPriority = 100,
+): number {
+  return priority >= foregroundPriority - 10
+    ? IMAGE_LOAD_TIMEOUT.foreground
+    : IMAGE_LOAD_TIMEOUT.background;
+}
+
 function isMaterializeData(value: unknown): value is Comic18MaterializeData {
   if (!value || typeof value !== 'object') return false;
   const data = value as Partial<Comic18MaterializeData>;

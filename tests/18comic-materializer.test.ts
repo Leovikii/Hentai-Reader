@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  get18ComicImageLoadTimeout,
   materialize18ComicImage,
   resolve18ComicSource,
 } from '../src/sites/18comic/materializer.ts';
@@ -21,6 +22,13 @@ test('separates 18comic source cleanup from anti-scramble materialization metada
     resolve18ComicSource('https://cdn.example/12345.webp?18aid=700&18scid=800'),
     { src: 'https://cdn.example/12345.webp' },
   );
+});
+
+test('publishes bounded foreground and background source-attempt deadlines', () => {
+  assert.equal(get18ComicImageLoadTimeout(100), 20_000);
+  assert.equal(get18ComicImageLoadTimeout(90), 20_000);
+  assert.equal(get18ComicImageLoadTimeout(89), 30_000);
+  assert.equal(get18ComicImageLoadTimeout(5), 30_000);
 });
 
 test('materializes 18comic strips in the original order and closes the bitmap', async () => {
