@@ -287,9 +287,9 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     const hasTouchInput = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
     function triggerMobileUITimeout() {
       clearTimeout(mobileUiTimeout);
-      if (!hasTouchInput || !pswp?.isCurrentContentLoaded()) return;
+      if (!hasTouchInput) return;
       mobileUiTimeout = setTimeout(() => {
-        if (pswp?.isCurrentContentLoaded()) pswp.hideUi();
+        pswp?.hideUi();
       }, 2000);
     }
 
@@ -299,11 +299,13 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
 
     function syncUiAvailabilityForCurrent(): void {
       if (!pswp) return;
+      // On touch devices the status HUD is independent from PhotoSwipe's
+      // controls. Loading updates must not reveal or keep the controls and
+      // thumbnail panel awake; only an explicit tap does that.
+      if (hasTouchInput) return;
       if (!pswp.isCurrentContentLoaded()) {
         cancelMobileUITimeout();
         pswp.showUi();
-      } else if (hasTouchInput) {
-        triggerMobileUITimeout();
       }
     }
 

@@ -142,7 +142,12 @@ test('reader remapping always releases its guard and keeps HUD state image-aware
   assert.match(source, /refreshSpreadLayout\(session\.currentIndex, index, true\)/);
   assert.match(source, /phase === 'loaded' && !pswp\.isCurrentContentLoaded\(\)/);
   assert.match(source, /pswp\.init\(\);\s*refreshHudForCurrent\(\)/);
-  assert.match(source, /if \(!pswp\.isCurrentContentLoaded\(\)\)[\s\S]*?pswp\.showUi\(\)/);
+  const mobileTimeout = source.match(/function triggerMobileUITimeout\(\) \{([\s\S]*?)\n    \}/)?.[1] ?? '';
+  const syncUi = source.match(/function syncUiAvailabilityForCurrent\(\): void \{([\s\S]*?)\n    \}/)?.[1] ?? '';
+  assert.doesNotMatch(mobileTimeout, /isCurrentContentLoaded/);
+  assert.match(mobileTimeout, /pswp\?\.hideUi\(\)/);
+  assert.match(syncUi, /if \(hasTouchInput\) return;/);
+  assert.match(syncUi, /if \(!pswp\.isCurrentContentLoaded\(\)\)[\s\S]*?pswp\.showUi\(\)/);
   assert.doesNotMatch(closeHandler, /isReinitializing/);
   assert.match(source, /function close\(\): void \{\s*if \(!isActive\) return;/);
 });
@@ -177,4 +182,12 @@ test('settings controls explicitly resist host-page button styling', async () =>
   assert.match(css, /\.settings-backdrop \.segment-item\.active[\s\S]*?color: #fff !important/);
   assert.match(css, /\.settings-backdrop \.settings-close-btn[\s\S]*?background: transparent !important/);
   assert.match(css, /\.settings-backdrop \.stepper-btn[\s\S]*?color: #fff !important/);
+});
+
+test('floating controls avoid sticky mobile tap and hover feedback', async () => {
+  const css = await readFile(path.join(srcRoot, 'ui/float-control.css'), 'utf8');
+  assert.match(css, /\.bookmark-control \{[\s\S]*?-webkit-tap-highlight-color:\s*transparent/);
+  assert.match(css, /\.bm-btn \{[\s\S]*?-webkit-tap-highlight-color:\s*transparent/);
+  assert.match(css, /@media \(hover: hover\) \{[\s\S]*?\.bm-btn:hover/);
+  assert.match(css, /@media \(hover: hover\) \{[\s\S]*?\.bm-mode-btn:hover/);
 });
