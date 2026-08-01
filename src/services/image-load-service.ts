@@ -325,25 +325,19 @@ export class ImageLoadService {
       return decoded;
     }
     this.setPhase(url, 'downloading');
-    const parentSignal = load.controller.signal;
-    const attemptController = new AbortController();
-    const abortAttempt = () => attemptController.abort();
-    parentSignal.addEventListener('abort', abortAttempt, { once: true });
-    const timeout = resolved.loadTimeoutMs && resolved.loadTimeoutMs > 0
-      ? setTimeout(abortAttempt, resolved.loadTimeoutMs)
-      : null;
     try {
-      return await this.deps.loadBytes(
-        resolved.src,
-        attemptController.signal,
-        load.priority,
-        load.lane,
+      return await this.runSourceAttempt(
+        load.controller.signal,
+        resolved.loadTimeoutMs,
+        signal => this.deps.loadBytes(
+          resolved.src,
+          signal,
+          load.priority,
+          load.lane,
+        ),
       );
     } catch {
       return null;
-    } finally {
-      if (timeout !== null) clearTimeout(timeout);
-      parentSignal.removeEventListener('abort', abortAttempt);
     }
   }
 
@@ -371,26 +365,37 @@ export class ImageLoadService {
     load: ActiveLoad,
   ): Promise<ResolvedImage | null> {
     if (!resolved?.src || load.controller.signal.aborted) return resolved;
-    if (!this.deps.materialize) return resolved;
-    const parentSignal = load.controller.signal;
-    const attemptController = new AbortController();
-    const abortAttempt = () => attemptController.abort();
-    parentSignal.addEventListener('abort', abortAttempt, { once: true });
-    const timeout = resolved.loadTimeoutMs && resolved.loadTimeoutMs > 0
-      ? setTimeout(abortAttempt, resolved.loadTimeoutMs)
-      : null;
+    const materialize = this.deps.materialize;
+    if (!materialize) return resolved;
     try {
-      const materialized = await this.deps.materialize(
-        url,
-        resolved,
-        attemptController.signal,
-        load.priority,
+      const materialized = await this.runSourceAttempt(
+        load.controller.signal,
+        resolved.loadTimeoutMs,
+        signal => materialize(url, resolved, signal, load.priority),
       );
       if (!materialized) this.discard(url, resolved);
       return materialized;
     } catch {
       this.discard(url, resolved);
       return null;
+    }
+  }
+
+  /** Bounds one source-specific attempt without aborting the shared load lifecycle. */
+  private async runSourceAttempt<T>(
+    parentSignal: AbortSignal,
+    timeoutMs: number | undefined,
+    task: (signal: AbortSignal) => Promise<T>,
+  ): Promise<T> {
+    const attemptController = new AbortController();
+    const abortAttempt = () => attemptController.abort();
+    if (parentSignal.aborted) abortAttempt();
+    else parentSignal.addEventListener('abort', abortAttempt, { once: true });
+    const timeout = timeoutMs && timeoutMs > 0
+      ? setTimeout(abortAttempt, timeoutMs)
+      : null;
+    try {
+      return await task(attemptController.signal);
     } finally {
       if (timeout !== null) clearTimeout(timeout);
       parentSignal.removeEventListener('abort', abortAttempt);

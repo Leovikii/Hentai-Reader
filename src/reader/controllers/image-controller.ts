@@ -9,7 +9,7 @@ import type { ReaderSession } from '../reader-session';
 
 export type ReaderImagePhase = 'resolving' | 'switching-source' | 'downloading' | 'loaded' | 'error';
 
-export interface ReaderItemData {
+interface ReaderItemData {
   src: string;
   msrc?: string;
   w: number;
@@ -36,8 +36,6 @@ export interface ReaderImageControllerDeps {
 }
 
 export interface ReaderImageController {
-  urlAt(index: number): string | undefined;
-  getItemData(index: number): ReaderItemData;
   getSpreadItemData(indices: readonly number[], width: number, height: number): ReaderSpreadItemData;
   getPhase(index: number): ReaderImagePhase;
   isLoading(index: number): boolean;
@@ -108,9 +106,11 @@ export function createReaderImageController(
       intent: isActive ? 'foreground' : 'neighbor',
       priority: isActive ? LOAD_PRIORITY.foreground : LOAD_PRIORITY.foreground - distance,
     });
-    leases.set(viewerUrl, { lease, unsubscribe: () => {} });
-    const unsubscribe = lease.subscribe(() => notify(viewerUrl));
-    leases.set(viewerUrl, { lease, unsubscribe });
+    // subscribe() reports the current phase synchronously, so publish the held
+    // lease before attaching the listener and then fill in its disposer.
+    const held = { lease, unsubscribe: () => {} };
+    leases.set(viewerUrl, held);
+    held.unsubscribe = lease.subscribe(() => notify(viewerUrl));
 
     lease.result.then(asset => {
       if (disposed || leases.get(viewerUrl)?.lease !== lease) return;
@@ -230,8 +230,6 @@ export function createReaderImageController(
   }
 
   return {
-    urlAt,
-    getItemData,
     getSpreadItemData,
     getPhase,
     isLoading: index => {

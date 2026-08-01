@@ -204,25 +204,27 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     }
 
     let startIndex = startIdx ?? 0;
-    
-    // Calculate start index only if not provided explicitly
+
+    // Calculate start index only if not provided explicitly.
     if (startIdx === undefined) {
       if (deps.context.isScrollMode()) {
         let minDistance = Infinity;
-      session.snapshotImages().forEach((img, index) => {
-        const rect = img.getBoundingClientRect();
-        const viewportCenter = window.innerHeight / 2;
-        if (rect.top <= viewportCenter && rect.bottom >= viewportCenter) {
-          startIndex = index;
-          minDistance = -1;
-        } else if (minDistance !== -1) {
-          const distanceToCenter = rect.bottom < viewportCenter ? viewportCenter - rect.bottom : rect.top - viewportCenter;
-          if (distanceToCenter < minDistance) {
-            minDistance = distanceToCenter;
+        session.snapshotImages().forEach((img, index) => {
+          const rect = img.getBoundingClientRect();
+          const viewportCenter = window.innerHeight / 2;
+          if (rect.top <= viewportCenter && rect.bottom >= viewportCenter) {
             startIndex = index;
+            minDistance = -1;
+          } else if (minDistance !== -1) {
+            const distanceToCenter = rect.bottom < viewportCenter
+              ? viewportCenter - rect.bottom
+              : rect.top - viewportCenter;
+            if (distanceToCenter < minDistance) {
+              minDistance = distanceToCenter;
+              startIndex = index;
+            }
           }
-        }
-      });
+        });
       } else {
         startIndex = session.currentIndex;
       }
@@ -315,24 +317,24 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     function handleScreenClick(point: ScreenPoint, defaultCenterAction: 'zoom' | 'toggle') {
       const width = window.innerWidth;
       if (point.x < width * 0.3) {
-         if (pswp?.currentIndex === 0 && deps.context.getPrevUrl() && !deps.context.isPageFetching()) {
-            pagination.loadPrev();
-         } else {
-            pswp?.prev();
-         }
+        if (pswp?.currentIndex === 0 && deps.context.getPrevUrl() && !deps.context.isPageFetching()) {
+          pagination.loadPrev();
+        } else {
+          pswp?.prev();
+        }
       } else if (point.x > width * 0.7) {
-         if (pswp?.currentIndex === spreadLayout.spreads.length - 1 && deps.context.getNextUrl() && !deps.context.isPageFetching()) {
-            pagination.loadNext();
-         } else {
-            pswp?.next();
-         }
+        if (pswp?.currentIndex === spreadLayout.spreads.length - 1 && deps.context.getNextUrl() && !deps.context.isPageFetching()) {
+          pagination.loadNext();
+        } else {
+          pswp?.next();
+        }
       } else {
-         if (defaultCenterAction === 'zoom' && pswp?.canToggleCurrentZoom()) {
-            pswp.toggleCurrentZoom(point);
-         } else {
-            const isNowVisible = pswp?.toggleUi();
-            if (isNowVisible) triggerMobileUITimeout();
-         }
+        if (defaultCenterAction === 'zoom' && pswp?.canToggleCurrentZoom()) {
+          pswp.toggleCurrentZoom(point);
+        } else {
+          const isNowVisible = pswp?.toggleUi();
+          if (isNowVisible) triggerMobileUITimeout();
+        }
       }
     }
 
@@ -384,6 +386,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
       getActiveIndices: activeLogicalIndices,
       getSlideContentState: index => pswp?.getSlideContentState(spreadLayout.spreadIndexForLogical(index)),
       onPhaseChange: (index, phase) => {
+        const isActiveIndex = activeLogicalIndices().includes(index);
         const wasFailed = failedLogicalIndices.has(index);
         if (phase === 'error') failedLogicalIndices.add(index);
         else if (phase === 'loaded') failedLogicalIndices.delete(index);
@@ -392,13 +395,14 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
         // completes (E-Hentai hath metadata). Re-evaluate the stable pair while
         // keeping the pending slot and the already visible member in place.
         if (phase === 'downloading') refreshSpreadLayout(session.currentIndex, index, true);
-        if (activeLogicalIndices().includes(index)) refreshHudForCurrent();
+        if (isActiveIndex) refreshHudForCurrent();
       },
       onAssetReady: index => {
+        const isActiveIndex = activeLogicalIndices().includes(index);
         refreshSpreadLayout(session.currentIndex, index, true);
         refreshHudForCurrent();
-        if (activeLogicalIndices().includes(index)) syncUiAvailabilityForCurrent();
-        if (activeLogicalIndices().includes(index)
+        if (isActiveIndex) syncUiAvailabilityForCurrent();
+        if (isActiveIndex
             && deps.context.isAutoPlayEnabled()
             && pswp?.isCurrentContentLoaded()) autoPlay.start();
       },
@@ -592,22 +596,20 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
         refreshHudForCurrent();
         syncUiAvailabilityForCurrent();
 
-        // Only trigger prev page load if we are actively navigating backwards near the edge, 
+        // Only trigger prev page load if we are actively navigating backwards near the edge,
         // or if we literally hit the absolute 0 index while trying to go back.
         if (session.currentIndex <= 3 && deps.context.getPrevUrl() && session.hasNavigated && isNavigatingBackwards) {
           pagination.loadPrev();
         }
         if (deps.context.isAutoPlayEnabled()) {
-           autoPlay.stop();
-           // Reached the last image with no further page to load — stop instead
-           // of leaving the interval spinning on a no-op next().
-           if (pswp.currentIndex >= spreadLayout.spreads.length - 1 && !deps.context.getNextUrl()) {
-             autoPlay.stopAtEnd();
-           } else {
-             if (pswp.isCurrentContentLoaded()) {
-               autoPlay.start();
-             }
-           }
+          autoPlay.stop();
+          // Reached the last image with no further page to load — stop instead
+          // of leaving the interval spinning on a no-op next().
+          if (pswp.currentIndex >= spreadLayout.spreads.length - 1 && !deps.context.getNextUrl()) {
+            autoPlay.stopAtEnd();
+          } else if (pswp.isCurrentContentLoaded()) {
+            autoPlay.start();
+          }
         }
 
         // A destination may have been cached as a pending or empty Content.
@@ -736,7 +738,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     if (!isActive) return;
     refreshActiveLayout();
     if (deps.context.isAutoPlayEnabled()) {
-       autoPlay.start();
+      autoPlay.start();
     } else {
       autoPlay.stop();
     }
@@ -751,7 +753,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
   });
 
   function warmupInitial(count: number): void {
-    if (isActive) return;  // already open, warmup is redundant
+    if (isActive) return; // already open, warmup is redundant
     // Seed the session from the DOM so the prefetch controller can resolve
     // indices → URLs. This matches open()'s logic, which re-reads anyway.
     session.syncImages(Array.from(document.querySelectorAll('.r-img, .r-ph')) as HTMLElement[]);

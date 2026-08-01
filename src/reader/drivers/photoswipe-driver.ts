@@ -8,9 +8,7 @@ import {
   shouldHandleSpreadMouseClick,
 } from './photoswipe-holder';
 
-export type { ScreenPoint } from '../contracts';
-
-export class PhotoSwipeDriver implements ReaderDriver {
+class PhotoSwipeDriver implements ReaderDriver {
   private readonly instance: PhotoSwipe;
   private readonly slidesByHolder = new WeakMap<HTMLElement, any>();
 

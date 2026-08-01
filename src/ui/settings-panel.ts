@@ -1,5 +1,6 @@
 import './settings-panel.css';
 import { store } from '../state/store';
+import type { UserSettings } from '../state/types';
 import { i18n } from '../utils/i18n';
 import { svgClose } from '../utils/icons';
 
@@ -174,7 +175,10 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
   const segmentControl = document.createElement('div');
   segmentControl.className = 'segment-control';
 
-  const posOptions = [
+  const posOptions: Array<{
+    value: UserSettings['thumbnailPosition'];
+    label: string;
+  }> = [
     { value: 'top', label: i18n.posTop },
     { value: 'bottom', label: i18n.posBottom },
     { value: 'left', label: i18n.posLeft },
@@ -194,7 +198,7 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
       e.stopPropagation();
       if (store.settings.thumbnailPosition === opt.value) return;
 
-      store.updateSetting('thumbnailPosition', opt.value as any);
+      store.updateSetting('thumbnailPosition', opt.value);
       segmentItems.forEach(el => {
         el.classList.remove('active');
         el.setAttribute('aria-pressed', 'false');

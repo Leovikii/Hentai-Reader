@@ -137,7 +137,12 @@ test('reader remapping always releases its guard and keeps HUD state image-aware
   assert.match(refreshFunction, /finishReinitializing\(\)/);
   assert.match(source, /onIdle: \(\) => refreshActiveHud\(\)/);
   assert.doesNotMatch(source, /onIdle: \(\) => shell\.hideStatus\(\)/);
-  assert.match(source, /if \(activeLogicalIndices\(\)\.includes\(index\)\) refreshHudForCurrent\(\)/);
+  assert.equal(
+    (source.match(/const isActiveIndex = activeLogicalIndices\(\)\.includes\(index\)/g) ?? []).length,
+    2,
+  );
+  assert.match(source, /if \(isActiveIndex\) refreshHudForCurrent\(\)/);
+  assert.match(source, /if \(isActiveIndex\) syncUiAvailabilityForCurrent\(\)/);
   assert.doesNotMatch(source, /refreshSlide:\s*index/);
   assert.match(source, /refreshSpreadLayout\(session\.currentIndex, index, true\)/);
   assert.match(source, /phase === 'loaded' && !pswp\.isCurrentContentLoaded\(\)/);
