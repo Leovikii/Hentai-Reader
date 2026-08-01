@@ -1,4 +1,4 @@
-# <img src="src/assets/icon.png" width="48" height="48" align="top" /> Hentai Reader (Formerly E-Hentai Plus)
+# <img src="src/assets/icon.svg" width="48" height="48" align="top" /> Hentai Reader (Formerly E-Hentai Plus)
 
 A high-performance universal reader for image galleries, built for mobile and touch with an extensible multi-site architecture.
 
@@ -20,7 +20,8 @@ Currently supported (more on the way):
 
 - **Infinite Scroll Mode** — Converts multi-page galleries into a continuous vertical scroll with auto-prefetching, while preserving native page metadata (tags, titles, comments). Toggle on the fly with instant reload.
 - **Immersive Reader Mode** — A distraction-free, full-screen viewer with keyboard, wheel, tap, and swipe navigation, plus a virtual-scrolling thumbnail panel for quick jumps.
-- **Performance Engine** — Viewport-aware loading, `content-visibility`, lease-protected shared image tasks, and bounded LRU caches avoid duplicate work while allowing the browser to reclaim off-screen rendering resources.
+- **Dynamic Two-page View** — Enabled by default on wide screens: adjacent portrait pages form a zoomable spread, while landscape pages, unknown sizes, and narrow screens safely remain single-page.
+- **Performance Engine** — Foreground-first image scheduling, staged 5/2 directional prefetch, viewport-aware loading, lease-protected shared tasks, and bounded caches keep current pages fast without duplicate work.
 - **Desktop & Touch** — Full desktop controls (wheel paging, keyboard, click zones) plus first-class touch: edge tap-to-page, swipe paging, pinch-zoom, and a timed auto-hiding UI for one-handed reading.
 - **18comic Decoding Engine** — Canvas-based descrambling runs through the shared priority scheduler, reuses managed image tasks, and releases Bitmap, Canvas, Blob, and Object URL resources predictably.
 - **Smart Anti-Blocking** — Domain feature-matching and redirect following keep the script working on sites like 4KHD that frequently change domains.
@@ -46,53 +47,6 @@ npm run check  # Typecheck, tests, and production build
 
 Output: `dist/hentai-reader.user.js`
 
-## Tech Stack
-
-- **TypeScript** + **Vite** + **vite-plugin-monkey**
-- **PhotoSwipe** reader driver with project-owned CSS
-- **Node.js test runner** for adapter, loading lifecycle, scheduling, and architecture boundary tests
-
-## Project Structure
-
-```
-src/
-├── main.ts                       # Entry point
-├── app/                          # Application composition and dependency wiring
-├── core/                         # Gallery, image, and site contracts
-├── reader/                       # Reader controller, drivers, shell, and UI
-│   ├── controllers/              # Image, prefetch, pagination, wheel, autoplay
-│   ├── drivers/                  # PhotoSwipe integration boundary
-│   └── shell/                    # Status and virtualized thumbnail UI
-├── scroll/                       # Scroll lifecycle, navigation, and image events
-├── services/                     # Shared loading, retry, scheduling, thumbnails
-├── sites/                        # Per-site adapters (add a site here)
-│   ├── site-manager.ts           # Adapter selection
-│   ├── e-hentai/ · 18comic/ · 4khd/
-│   └── _template/                # New-site starter adapter
-├── ui/
-│   ├── float-control.ts          # Floating controls
-│   └── settings-panel.ts         # Settings panel
-├── state/                        # config.ts · store.ts
-│   └── types.ts                  # Application settings/config types
-└── utils/                        # i18n · icons · viewport
-
-tests/                            # Regression and architecture contract tests
-docs/                             # Architecture, new-site guide, and backlog
-```
-
 ## License
 
 GNU General Public License v3.0 only (`GPL-3.0-only`). See [LICENSE](LICENSE).
-
-## Development Documentation
-
-The architecture is organized around `src/core/`, `src/services/`, `src/reader/`,
-`src/scroll/`, and site adapters under `src/sites/`.
-
-The completed refactor centralizes resolve, materialize, retry, cache, lease, and
-resource ownership. Reader UI, PhotoSwipe integration, scroll lifecycle, and site
-adapters are separated by explicit contracts so fixes remain local to their owner.
-
-- [Final refactor plan](docs/final-refactor-plan.md)
-- [New site adapter guide](docs/new-site-guide.md)
-- [Deferred refactor backlog](docs/refactor-backlog.md)

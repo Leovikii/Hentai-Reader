@@ -1,6 +1,7 @@
 export const isMobileBrowser = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
-export function initViewportScale() {
+export function initViewportScale(): () => void {
+  let orientationTimer: ReturnType<typeof setTimeout> | null = null;
   
   const updateScale = () => {
     if (isMobileBrowser) {
@@ -29,5 +30,16 @@ export function initViewportScale() {
 
   updateScale();
   window.addEventListener('resize', updateScale);
-  window.addEventListener('orientationchange', () => setTimeout(updateScale, 100));
+  const onOrientationChange = () => {
+    if (orientationTimer) clearTimeout(orientationTimer);
+    orientationTimer = setTimeout(updateScale, 100);
+  };
+  window.addEventListener('orientationchange', onOrientationChange);
+  return () => {
+    if (orientationTimer) clearTimeout(orientationTimer);
+    window.removeEventListener('resize', updateScale);
+    window.removeEventListener('orientationchange', onOrientationChange);
+    document.documentElement.classList.remove('hr-mobile');
+    document.documentElement.style.removeProperty('--hr-scale');
+  };
 }

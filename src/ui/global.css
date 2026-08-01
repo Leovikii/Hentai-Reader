@@ -93,3 +93,34 @@ html.hr-reader-open .hr-page-batch {
   border-color: #d44;
 }
 
+.hr-pagination-error {
+  box-sizing: border-box;
+  margin: 24px auto;
+  padding: 14px 18px;
+  width: min(92vw, 520px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: #fff;
+  background: rgba(120, 24, 36, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 12px;
+}
+
+.hr-pagination-error[hidden] { display: none; }
+
+.hr-pagination-error button {
+  min-width: 72px;
+  min-height: 40px;
+  color: #fff;
+  background: var(--hr-accent);
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.hr-pagination-error button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}

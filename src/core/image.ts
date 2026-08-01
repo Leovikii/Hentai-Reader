@@ -8,6 +8,17 @@ export interface ResolvedImage {
   materializeData?: unknown;
   /** True only when the resolver transfers object-URL ownership to the loader. */
   ownsObjectUrl?: boolean;
+  /** Exact managed Blob bytes when ownership is transferred to the loader. */
+  byteSize?: number;
+  /**
+   * Reliable dimensions when a materializer has already decoded the source.
+   * The shared loader may use these to avoid immediately decoding its freshly
+   * generated Blob a second time before a visible consumer mounts it.
+   */
+  decodedDimensions?: {
+    width: number;
+    height: number;
+  };
 }
 
 export interface LoadedImage extends ResolvedImage {

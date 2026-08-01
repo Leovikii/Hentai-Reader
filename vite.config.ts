@@ -2,7 +2,12 @@ import { defineConfig } from 'vite';
 import monkey from 'vite-plugin-monkey';
 import { readFileSync } from 'fs';
 
-const iconBase64 = readFileSync('src/assets/icon.png', 'base64');
+const iconSvg = readFileSync('src/assets/icon.svg', 'utf8')
+  .replace(/>\s+</g, '><')
+  .trim();
+const iconPercent = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
+const iconBase64 = `data:image/svg+xml;base64,${Buffer.from(iconSvg).toString('base64')}`;
+const iconDataUrl = iconPercent.length < iconBase64.length ? iconPercent : iconBase64;
 
 export default defineConfig({
   plugins: [
@@ -15,7 +20,7 @@ export default defineConfig({
         },
         namespace: 'http://tampermonkey.net/',
         homepageURL: 'https://github.com/Leovikii/Hentai-Reader',
-        icon: `data:image/png;base64,${iconBase64}`,
+        icon: iconDataUrl,
 
         description: {
           '': 'A high-performance universal reader for image galleries, now with mobile and touch device support, plus infinite scroll, immersive reader mode, and smart image loading, with ongoing multi-site support (E-Hentai, 18comic, 4KHD).',

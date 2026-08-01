@@ -25,6 +25,7 @@ export function createReader(pageLoader: GalleryPageLoader): ReaderHandle {
     context: {
       getGalleryItems: () => store.galleryItems,
       isScrollMode: () => store.settings.scrollMode,
+      isDoublePageModeEnabled: () => store.settings.doublePageMode,
       isAutoPlayEnabled: () => store.autoPlay,
       setAutoPlayEnabled: enabled => {
         if (store.autoPlay === enabled) return;

@@ -91,3 +91,30 @@ test('PhotoSwipe package and internal fields stay behind the driver', async () =
     assert.equal(/\bcurrSlide\b|\bcontentLoader\b/.test(source), false, relative);
   }
 });
+
+test('dynamic spread changes keep the live Reader driver instead of rebuilding it', async () => {
+  const source = await readFile(path.join(srcRoot, 'reader/reader-controller.ts'), 'utf8');
+  const branch = source.match(/if \(previousKeys !== nextKeys\) \{([\s\S]*?)\n      \}/)?.[1] ?? '';
+  assert.match(source, /previousKeys !== nextKeys && pswp\.isInteracting\(\)/);
+  assert.match(branch, /pswp\.syncLayout\(targetSpread\)/);
+  assert.doesNotMatch(branch, /destroy\(|initPhotoSwipe\(/);
+});
+
+test('owned-image cleanup is observer-driven and expensive materialization is serialized', async () => {
+  const scroll = await readFile(path.join(srcRoot, 'scroll/scroll-controller.ts'), 'utf8');
+  const config = await readFile(path.join(srcRoot, 'state/config.ts'), 'utf8');
+  assert.match(scroll, /ownedImageObserver = new IntersectionObserver/);
+  assert.match(scroll, /pendingLoadObserver = new IntersectionObserver/);
+  assert.match(scroll, /for \(const placeholder of pendingPlaceholders\)/);
+  assert.match(scroll, /\[\.\.\.pendingPlaceholders\]\.forEach\(placeholder => cancelPendingLoad\(placeholder, false\)\)/);
+  assert.doesNotMatch(scroll, /querySelectorAll<HTMLElement>\('\.r-img\[data-owns-object-url/);
+  assert.match(config, /imageMaterializeConcurrent:\s*1/);
+});
+
+test('settings controls explicitly resist host-page button styling', async () => {
+  const css = await readFile(path.join(srcRoot, 'ui/settings-panel.css'), 'utf8');
+  assert.match(css, /\.settings-backdrop \.segment-item[\s\S]*?background: transparent !important/);
+  assert.match(css, /\.settings-backdrop \.segment-item\.active[\s\S]*?color: #fff !important/);
+  assert.match(css, /\.settings-backdrop \.settings-close-btn[\s\S]*?background: transparent !important/);
+  assert.match(css, /\.settings-backdrop \.stepper-btn[\s\S]*?color: #fff !important/);
+});

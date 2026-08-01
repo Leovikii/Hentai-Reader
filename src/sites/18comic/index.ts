@@ -134,7 +134,16 @@ export const Comic18Adapter: SiteAdapter = {
 
   hideOriginalElements() {
     const pages = Array.from(document.querySelectorAll('.scramble-page'));
-    for (let index = 1; index < pages.length; index++) pages[index].remove();
-    document.querySelectorAll('.owl-carousel').forEach(element => element.remove());
+    const removed = [
+      ...pages.slice(1),
+      ...Array.from(document.querySelectorAll('.owl-carousel')),
+    ].map(element => ({ element, parent: element.parentNode, next: element.nextSibling }));
+    removed.forEach(({ element }) => element.remove());
+    return () => {
+      for (const { element, parent, next } of removed) {
+        if (!parent || element.parentNode) continue;
+        parent.insertBefore(element, next?.parentNode === parent ? next : null);
+      }
+    };
   },
 };

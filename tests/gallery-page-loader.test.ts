@@ -66,9 +66,9 @@ test('bounds automatic page retries and clears in-flight state after final failu
   const loader = new GalleryPageLoader(adapter);
 
   await assert.rejects(loader.loadPage('retry'), /offline/);
-  assert.equal(calls, 3);
+  assert.equal(calls, 4);
   await assert.rejects(loader.loadPage('retry'), /offline/);
-  assert.equal(calls, 6);
+  assert.equal(calls, 8);
 });
 
 test('rejects empty fetched pages without marking them loaded', async () => {

@@ -144,7 +144,8 @@ export function createThumbnailPanel(
 
   function acquireItem(): HTMLElement {
     return itemPool.pop() || (() => {
-      const el = document.createElement('div');
+      const el = document.createElement('button');
+      el.type = 'button';
       el.className = 'sp-thumb-item';
       return el;
     })();
@@ -207,6 +208,9 @@ export function createThumbnailPanel(
   function renderItemContent(el: HTMLElement, index: number): void {
     el.dataset.index = String(index);
     el.classList.toggle('sp-thumb-active', index === options.getCurrentIndex());
+    el.setAttribute('aria-label', `Page ${options.getDisplayNumber(index)}`);
+    if (index === options.getCurrentIndex()) el.setAttribute('aria-current', 'page');
+    else el.removeAttribute('aria-current');
 
     const img = options.getImageAt(index);
     const item = options.getItemAt(index);

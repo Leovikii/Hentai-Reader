@@ -20,6 +20,10 @@ export interface ReaderDriver {
   prev(): void;
   goTo(index: number): void;
   refreshSlide(index: number): void;
+  /** Reconcile a changed presentation data source without replacing the root reader. */
+  syncLayout(index: number): void;
+  /** True while a gesture or transition makes structural remapping unsafe. */
+  isInteracting(): boolean;
   stopMotion(): void;
   getSlideContentState(index: number): string | undefined;
   isCurrentContentLoaded(): boolean;
@@ -86,6 +90,7 @@ export interface ReaderHandle {
 export interface ReaderAppContext {
   getGalleryItems(): readonly GalleryItem[];
   isScrollMode(): boolean;
+  isDoublePageModeEnabled(): boolean;
   isAutoPlayEnabled(): boolean;
   setAutoPlayEnabled(enabled: boolean): void;
   getAutoPlayInterval(): number;

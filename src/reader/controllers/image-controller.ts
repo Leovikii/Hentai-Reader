@@ -16,8 +16,20 @@ export interface ReaderItemData {
   h: number;
 }
 
+export interface ReaderSpreadItemData {
+  src: '';
+  w: number;
+  h: number;
+  hrSpread: readonly {
+    index: number;
+    src: string;
+    alt: string;
+  }[];
+}
+
 export interface ReaderImageControllerDeps {
   getCurrentIndex: () => number;
+  getActiveIndices?: () => readonly number[];
   getSlideContentState: (index: number) => string | undefined;
   refreshSlide: (index: number) => void;
   onPhaseChange: (index: number, phase: ReaderImagePhase) => void;
@@ -27,6 +39,7 @@ export interface ReaderImageControllerDeps {
 export interface ReaderImageController {
   urlAt(index: number): string | undefined;
   getItemData(index: number): ReaderItemData;
+  getSpreadItemData(indices: readonly number[], width: number, height: number): ReaderSpreadItemData;
   getPhase(index: number): ReaderImagePhase;
   isLoading(index: number): boolean;
   handleContentLoad(index: number): void;
@@ -90,10 +103,11 @@ export function createReaderImageController(
 
   function ensureLease(index: number, viewerUrl: string): void {
     if (!viewerUrl || leases.has(viewerUrl) || disposed) return;
+    const isActive = deps.getActiveIndices?.().includes(index) ?? index === deps.getCurrentIndex();
     const distance = Math.abs(index - deps.getCurrentIndex());
     const lease = acquireImage(viewerUrl, {
-      intent: distance === 0 ? 'foreground' : 'neighbor',
-      priority: LOAD_PRIORITY.foreground - distance,
+      intent: isActive ? 'foreground' : 'neighbor',
+      priority: isActive ? LOAD_PRIORITY.foreground : LOAD_PRIORITY.foreground - distance,
     });
     leases.set(viewerUrl, { lease, unsubscribe: () => {} });
     const unsubscribe = lease.subscribe(() => notify(viewerUrl));
@@ -181,6 +195,22 @@ export function createReaderImageController(
     notify(url);
   }
 
+  function getSpreadItemData(indices: readonly number[], width: number, height: number): ReaderSpreadItemData {
+    return {
+      src: '',
+      w: Math.max(1, width),
+      h: Math.max(1, height),
+      hrSpread: indices.map(index => {
+        const data = getItemData(index);
+        return {
+          index,
+          src: data.src,
+          alt: `Page ${index + 1}`,
+        };
+      }),
+    };
+  }
+
   function handleLoadComplete(index: number, isError: boolean): void {
     const url = urlAt(index);
     if (!url) return;
@@ -204,6 +234,7 @@ export function createReaderImageController(
   return {
     urlAt,
     getItemData,
+    getSpreadItemData,
     getPhase,
     isLoading: index => {
       const phase = getPhase(index);
