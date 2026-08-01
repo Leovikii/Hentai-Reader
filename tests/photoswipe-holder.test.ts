@@ -4,6 +4,7 @@ import {
   getPhotoSwipeHolderPosition,
   getSpreadMouseClickAction,
   reconcilePhotoSwipeHolder,
+  shouldRetainMountedSpreadImage,
   shouldHandleSpreadMouseClick,
 } from '../src/reader/drivers/photoswipe-holder.ts';
 
@@ -13,6 +14,13 @@ test('maps only previous/current/next indices to stable holder positions', () =>
   assert.equal(getPhotoSwipeHolderPosition(4, 5, 3), 2);
   assert.equal(getPhotoSwipeHolderPosition(4, 2, 3), null);
   assert.equal(getPhotoSwipeHolderPosition(4, 6, 3), null);
+});
+
+test('retains decoded spread pixels only for a mounted image with a source', () => {
+  assert.equal(shouldRetainMountedSpreadImage('IMG', 'https://example.test/page.jpg'), true);
+  assert.equal(shouldRetainMountedSpreadImage('IMG', ''), false);
+  assert.equal(shouldRetainMountedSpreadImage('SPAN', 'https://example.test/page.jpg'), false);
+  assert.equal(shouldRetainMountedSpreadImage(undefined, undefined), false);
 });
 
 interface FakeContainer {

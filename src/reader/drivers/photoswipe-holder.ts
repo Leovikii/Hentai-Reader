@@ -19,6 +19,14 @@ export function getPhotoSwipeHolderPosition(
   return position >= 0 && position < holderCount ? position : null;
 }
 
+/** Keep already decoded pixels when a remap temporarily cannot republish src. */
+export function shouldRetainMountedSpreadImage(
+  tagName: string | undefined,
+  src: string | null | undefined,
+): boolean {
+  return tagName === 'IMG' && !!src;
+}
+
 export function shouldHandleSpreadMouseClick(
   pointerType: string,
   defaultPrevented: boolean,

@@ -32,7 +32,6 @@ const UNKNOWN_PORTRAIT_RATIO = 2 / 3;
 
 function hasReliablePortraitSize(page: SpreadPage | undefined): page is Required<Pick<SpreadPage, 'key' | 'width' | 'height'>> & SpreadPage {
   return !!page
-    && !page.failed
     && Number.isFinite(page.width)
     && Number.isFinite(page.height)
     && (page.width ?? 0) > 0
@@ -41,7 +40,7 @@ function hasReliablePortraitSize(page: SpreadPage | undefined): page is Required
 }
 
 function portraitRatio(page: SpreadPage | undefined): number | undefined | null {
-  if (!page || page.failed) return null;
+  if (!page) return null;
   const hasSize = Number.isFinite(page.width)
     && Number.isFinite(page.height)
     && (page.width ?? 0) > 0
@@ -67,6 +66,11 @@ function pairState(
     + (secondRatio ?? UNKNOWN_PORTRAIT_RATIO)
   );
   if (fittedWidth + gutter > viewport.width) return null;
+  // A recoverable network/source failure must not collapse an established
+  // pair into two singles and then re-pair it moments later. Keep its stable
+  // slot while the HUD reports the error; known landscape geometry still
+  // rejects pairing above.
+  if (first.failed || second.failed) return 'pending-pair';
   return firstRatio === undefined || secondRatio === undefined ? 'pending-pair' : 'pair';
 }
 

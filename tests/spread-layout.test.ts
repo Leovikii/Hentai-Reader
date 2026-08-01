@@ -12,11 +12,10 @@ test('pairs fixed portrait slots when the viewport is wide enough', () => {
   assert.equal(formatSpreadCounter(layout.spreads[0], 10, 3), '11\u201312 / 13');
 });
 
-test('splits a fixed slot for landscape, square, failed, disabled, or narrow layouts', () => {
+test('splits a fixed slot for landscape, square, disabled, or narrow layouts', () => {
   const invalidSeconds = [
     { key: 'landscape', width: 1000, height: 700 },
     { key: 'square', width: 800, height: 800 },
-    { key: 'failed', width: 600, height: 900, failed: true },
   ];
   for (const second of invalidSeconds) {
     assert.deepEqual(
@@ -26,6 +25,16 @@ test('splits a fixed slot for landscape, square, failed, disabled, or narrow lay
   }
   assert.equal(createSpreadLayout([portrait('a'), portrait('b')], { width: 1400, height: 900 }, false).spreads.length, 2);
   assert.equal(createSpreadLayout([portrait('a'), portrait('b')], { width: 1000, height: 900 }, true).spreads.length, 2);
+});
+
+test('keeps a recoverable failed portrait in its stable pair slot', () => {
+  const layout = createSpreadLayout(
+    [portrait('a'), { key: 'failed', width: 600, height: 900, failed: true }],
+    { width: 1400, height: 900 },
+    true,
+  );
+  assert.deepEqual(layout.spreads.map(spread => spread.logicalIndices), [[0, 1]]);
+  assert.equal(layout.spreads[0].state, 'pending-pair');
 });
 
 test('reserves a stable pending pair on a wide viewport until dimensions arrive', () => {

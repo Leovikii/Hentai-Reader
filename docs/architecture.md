@@ -89,6 +89,8 @@ viewer URL
   左右页分别朝书脊对齐。尺寸或来源迟到时 Driver 原位更新图片节点并同步三个表现 holder，
   不销毁 PhotoSwipe 根实例。结构重映射至少等待连续两个空闲帧，不强停 PhotoSwipe 动画、
   手势或垂直关闭回弹。
+- 可恢复的图片源失败不得把已知或待确认竖图 pair 临时拆成两个单页；失败成员保留固定槽并由
+  聚合 HUD 反馈，恢复后只填充该槽。可靠横图/方图和宽度不足仍拆为单页。
 - 每个 PhotoSwipe item holder 在任何时刻只能保留一个活动 `pswp__zoom-wrap`。强制内容重映射
   若先丢失旧 Slide 引用，Driver 必须在新内容挂载完成时销毁仍连接的旧 Slide，并清除无法
   追踪的孤儿 wrapper；缓存失效不得只销毁 Content 而遗留 Slide 容器。
@@ -111,6 +113,9 @@ viewer URL
 - Reader 的“当前内容已加载”不仅要求图片生命周期完成，还要求索引一致的当前 Slide 容器仍
   挂在当前 holder，且所有 Spread 成员均已有图片节点。资源完成但 DOM 缺失时必须继续显示 HUD
   和控件，并在正常 `change` 结束后的空闲帧防御性修复当前 holder。
+- Gallery 重映射或租约切换可能短暂无法为同一逻辑页重新发布 `src`；若该槽已有挂载图片，
+  Driver 必须保留其已解码像素，不得把可见图片降级为 pending。只有从未挂载图片的新槽才创建
+  pending 元素；后续有效来源仍可原位替换或确认现有图片。
 - Gallery 追加或前插改变表现页总数时，必须在 Session 索引调整完成后进入同一空闲帧重映射
   路径；不得先直接替换活动 `SpreadLayout` 再只刷新相邻 Slide。PhotoSwipe 可能已经为旧末页
   之后缓存越界 Content，只有完整 `syncLayout()` 才能清除该缓存并同步三个 holder 与新总数。

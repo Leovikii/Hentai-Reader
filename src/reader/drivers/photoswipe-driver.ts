@@ -4,6 +4,7 @@ import {
   getPhotoSwipeHolderPosition,
   getSpreadMouseClickAction,
   reconcilePhotoSwipeHolder,
+  shouldRetainMountedSpreadImage,
   shouldHandleSpreadMouseClick,
 } from './photoswipe-holder';
 
@@ -383,6 +384,14 @@ export class PhotoSwipeDriver implements ReaderDriver {
         image.fetchPriority = 'high';
         if (image.src !== page.src) image.src = page.src;
         next = image;
+      } else if (shouldRetainMountedSpreadImage(
+        current?.tagName,
+        current?.getAttribute('src'),
+      )) {
+        // A Gallery remap or cache lease transition may briefly publish an
+        // empty src for the same logical page. Preserve its already visible
+        // image instead of regressing the current spread to a pending spinner.
+        next = current!;
       } else {
         const pending = current?.tagName === 'SPAN'
           ? current
