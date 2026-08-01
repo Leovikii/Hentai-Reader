@@ -1,6 +1,5 @@
 export interface UserSettings {
   scrollMode: boolean;
-  showControl: boolean;
   autoEnterSinglePage: boolean;
   clickToEnterReader: boolean;
   doublePageMode: boolean;

@@ -44,7 +44,6 @@ export default defineConfig({
         grant: [
           'GM_getValue',
           'GM_setValue',
-          'GM_registerMenuCommand',
           'unsafeWindow',
         ],
         license: 'GPL-3.0-only',

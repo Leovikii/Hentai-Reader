@@ -20,7 +20,6 @@ export function loadSettings(adapter?: Pick<SiteAdapter, 'name' | 'scrollPolicy'
   
   return {
     scrollMode,
-    showControl: GM_getValue('showControl', true),
     autoEnterSinglePage: GM_getValue('autoEnterSinglePage', false),
     clickToEnterReader: GM_getValue('clickToEnterReader', true),
     doublePageMode: GM_getValue('doublePageMode', true),

@@ -4,11 +4,10 @@ import { svgReader, svgSettings, svgTop, svgScroll, svgPlay, svgPause } from '..
 import { createSettingsPanel } from './settings-panel';
 import { i18n } from '../utils/i18n';
 import type { ReaderHandle } from '../reader/contracts';
-import { GM_registerMenuCommand } from '$';
 
 export function createFloatControl(readerHandle: ReaderHandle): () => void {
   const floatControl = document.createElement('div');
-  floatControl.className = `bookmark-control${store.settings.showControl ? '' : ' hidden'}`;
+  floatControl.className = 'bookmark-control';
 
   // Read saved position
   let savedPos = { side: 'right', topPercent: 50 };
@@ -104,13 +103,6 @@ export function createFloatControl(readerHandle: ReaderHandle): () => void {
   floatControl.appendChild(settingsBtn);
 
   document.body.appendChild(floatControl);
-
-  GM_registerMenuCommand(i18n.restoreControl, () => {
-    store.updateSetting('showControl', true);
-    floatControl.classList.remove('hidden');
-    floatControl.removeAttribute('aria-hidden');
-    topBtn.focus({ preventScroll: true });
-  });
 
   // Dragging logic
   let isDragging = false;

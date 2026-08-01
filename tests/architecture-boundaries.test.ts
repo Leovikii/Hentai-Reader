@@ -89,6 +89,10 @@ test('transitional feature and legacy reader UI files are gone', async () => {
   for (const relative of removed) {
     await assert.rejects(access(path.join(srcRoot, relative)), relative);
   }
+  const sources = await Promise.all((await sourceFiles(srcRoot)).map(file => readFile(file, 'utf8')));
+  const userscriptConfig = await readFile(path.resolve(srcRoot, '../vite.config.ts'), 'utf8');
+  assert.doesNotMatch(sources.join('\n'), /\bshowControl\b|\bGM_registerMenuCommand\b/);
+  assert.doesNotMatch(userscriptConfig, /GM_registerMenuCommand/);
 });
 
 test('PhotoSwipe package and internal fields stay behind the driver', async () => {

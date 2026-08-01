@@ -13,7 +13,7 @@ export interface SettingsPanelHandle {
 
 interface SettingItem {
   label: string;
-  key: keyof Pick<typeof store.settings, 'scrollMode' | 'showControl' | 'autoEnterSinglePage' | 'clickToEnterReader' | 'doublePageMode'>;
+  key: keyof Pick<typeof store.settings, 'scrollMode' | 'autoEnterSinglePage' | 'clickToEnterReader' | 'doublePageMode'>;
 }
 
 const SETTINGS: SettingItem[] = [
