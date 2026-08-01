@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { reconcilePhotoSwipeHolder } from '../src/reader/drivers/photoswipe-holder.ts';
+import {
+  getSpreadMouseClickAction,
+  reconcilePhotoSwipeHolder,
+  shouldHandleSpreadMouseClick,
+} from '../src/reader/drivers/photoswipe-holder.ts';
 
 interface FakeContainer {
   classList: { contains: (name: string) => boolean };
@@ -73,4 +77,31 @@ test('holder reconciliation does not destroy a previous slide that PhotoSwipe al
 
   assert.equal(staleDestroyCount, 0);
   assert.deepEqual(holder.children, [activeContainer]);
+});
+
+function spreadClickTarget(kind: 'image' | 'pending' | 'root' | 'outside'): Element {
+  return {
+    closest: (selector: string) => {
+      if (selector === '[data-reader-spread]') return kind === 'outside' ? null : {};
+      if (selector === 'img.hr-reader-spread__page') return kind === 'image' ? {} : null;
+      return null;
+    },
+  } as unknown as Element;
+}
+
+test('classifies spread mouse clicks without intercepting non-spread controls', () => {
+  assert.equal(getSpreadMouseClickAction(spreadClickTarget('image'), true), 'image');
+  assert.equal(getSpreadMouseClickAction(spreadClickTarget('image'), false), 'background');
+  assert.equal(getSpreadMouseClickAction(spreadClickTarget('pending'), true), 'background');
+  assert.equal(getSpreadMouseClickAction(spreadClickTarget('root'), true), 'background');
+  assert.equal(getSpreadMouseClickAction(spreadClickTarget('outside'), true), null);
+  assert.equal(getSpreadMouseClickAction(null, true), null);
+});
+
+test('mouse compensation ignores touch taps and PhotoSwipe-suppressed drag clicks', () => {
+  assert.equal(shouldHandleSpreadMouseClick('mouse', false, 0), true);
+  assert.equal(shouldHandleSpreadMouseClick('touch', false, 0), false);
+  assert.equal(shouldHandleSpreadMouseClick('pen', false, 0), false);
+  assert.equal(shouldHandleSpreadMouseClick('mouse', true, 0), false);
+  assert.equal(shouldHandleSpreadMouseClick('mouse', false, 1), false);
 });

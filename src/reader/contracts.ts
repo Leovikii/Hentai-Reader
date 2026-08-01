@@ -31,6 +31,7 @@ export interface ReaderDriver {
   isCurrentAtInitialZoom(): boolean;
   canToggleCurrentZoom(): boolean;
   toggleCurrentZoom(point: ScreenPoint): void;
+  showUi(): void;
   hideUi(): void;
   toggleUi(): boolean;
   appendUi(elements: readonly HTMLElement[]): void;

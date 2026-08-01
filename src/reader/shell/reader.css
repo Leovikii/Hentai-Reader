@@ -563,6 +563,28 @@
 }
 
 .hr-reader-spread__page--pending {
+  position: relative;
   min-width: 0;
-  background: transparent;
+  border: 1px solid rgba(245, 150, 170, 0.16);
+  background:
+    radial-gradient(circle at center, rgba(245, 150, 170, 0.12), transparent 28%),
+    rgba(255, 255, 255, 0.025);
+}
+
+.hr-reader-spread__page--pending::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 28px;
+  height: 28px;
+  margin: -16px 0 0 -16px;
+  content: '';
+  border: 2px solid rgba(245, 150, 170, 0.22);
+  border-top-color: #f596aa;
+  border-radius: 50%;
+  animation: hr-reader-pending-spin 0.8s linear infinite;
+}
+
+@keyframes hr-reader-pending-spin {
+  to { transform: rotate(360deg); }
 }

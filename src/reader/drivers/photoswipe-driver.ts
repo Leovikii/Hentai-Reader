@@ -1,6 +1,10 @@
 import PhotoSwipe from 'photoswipe';
 import type { ReaderDriver, ReaderDriverOptions, ScreenPoint } from '../contracts';
-import { reconcilePhotoSwipeHolder } from './photoswipe-holder';
+import {
+  getSpreadMouseClickAction,
+  reconcilePhotoSwipeHolder,
+  shouldHandleSpreadMouseClick,
+} from './photoswipe-holder';
 
 export type { ScreenPoint } from '../contracts';
 
@@ -70,6 +74,37 @@ export class PhotoSwipeDriver implements ReaderDriver {
       if (!holderElement) return;
       reconcilePhotoSwipeHolder(holderElement, slide, this.slidesByHolder.get(holderElement));
       this.slidesByHolder.set(holderElement, slide);
+    });
+    this.instance.on('bindEvents', () => {
+      const root = this.instance.element;
+      if (!root) return;
+      let lastPointerType = '';
+      const onPointerDown = (event: PointerEvent) => {
+        lastPointerType = event.pointerType;
+      };
+      const onClick = (event: MouseEvent) => {
+        const pointerType = (event as PointerEvent).pointerType || lastPointerType;
+        lastPointerType = '';
+        // Touch taps already use PhotoSwipe's tapAction. Only fill the mouse
+        // classification gap, and preserve its post-drag click suppression.
+        if (!shouldHandleSpreadMouseClick(pointerType, event.defaultPrevented, event.button)) return;
+        const action = getSpreadMouseClickAction(
+          event.target as Element | null,
+          root.classList.contains('pswp--ui-visible'),
+        );
+        if (!action) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const point = { x: event.clientX, y: event.clientY };
+        if (action === 'image') options.onImageClick(point);
+        else options.onBackgroundClick(point);
+      };
+      root.addEventListener('pointerdown', onPointerDown);
+      root.addEventListener('click', onClick);
+      this.instance.on('destroy', () => {
+        root.removeEventListener('pointerdown', onPointerDown);
+        root.removeEventListener('click', onClick);
+      });
     });
   }
 
@@ -191,6 +226,10 @@ export class PhotoSwipeDriver implements ReaderDriver {
 
   toggleCurrentZoom(point: ScreenPoint): void {
     this.instance.currSlide?.toggleZoom(point);
+  }
+
+  showUi(): void {
+    this.instance.element?.classList.add('pswp--ui-visible');
   }
 
   hideUi(): void {

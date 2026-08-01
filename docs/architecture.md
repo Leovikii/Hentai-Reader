@@ -93,6 +93,19 @@ viewer URL
   若先丢失旧 Slide 引用，Driver 必须在新内容挂载完成时销毁仍连接的旧 Slide，并清除无法
   追踪的孤儿 wrapper；缓存失效不得只销毁 Content 而遗留 Slide 容器。
 - 桌面滚轮、键盘、点击区、移动滑动、双指缩放、垂直关闭和 UI 区域事件屏蔽是兼容红线。
+- 双页成员的加载状态不得阻塞滚轮、键盘、点击或滑动导航；未就绪成员由稳定槽内加载动画和
+  聚合 HUD 反馈。单页加载边界仍采用落页后结束本次滚轮手势的旧语义。
+- 自定义 Spread 的 mouse 点击分类只允许由 PhotoSwipe Driver 补偿；隐藏 UI 的 Spread、
+  pending 槽和中缝按背景点击处理，可见图片按图片点击处理。touch/pen 保持 PhotoSwipe 原生
+  tap 路径，Reader 通用层不得识别 PhotoSwipe DOM 类名。
+- 当前 Spread 的 HUD 必须聚合所有逻辑成员，Gallery 分页空闲不得覆盖图片下载状态。结构
+  重映射与 prepend 的状态锁必须在 `finally` 中释放，Reader 关闭不得被该临时状态锁忽略。
+- 图片来源填充和结构重映射均不得在 Driver 手势、主滚动或动画期间刷新 Slide；交互结束后
+  至少等待连续两个空闲帧再原位更新。过渡期间保持 HUD，触摸设备在当前 Spread 未完整就绪时
+  保持 UI 可见，pending 槽不得是无反馈的纯黑区域。
+- Gallery 追加或前插改变表现页总数时，必须在 Session 索引调整完成后进入同一空闲帧重映射
+  路径；不得先直接替换活动 `SpreadLayout` 再只刷新相邻 Slide。PhotoSwipe 可能已经为旧末页
+  之后缓存越界 Content，只有完整 `syncLayout()` 才能清除该缓存并同步三个 holder 与新总数。
 - Reader 关闭未导航时恢复进入前 scrollY；已导航时按稳定 key 找到卷轴元素并执行一次直接
   定位。关闭后不得用 Observer/Timer 再次抢夺用户滚动位置。
 - 双页只存在于 Reader 表现层；Driver 以两个独立图片元素挂入同一缩放容器，缓存、租约和

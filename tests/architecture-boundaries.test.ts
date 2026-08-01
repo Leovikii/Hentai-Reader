@@ -109,6 +109,8 @@ test('dynamic spread changes keep the live Reader driver instead of rebuilding i
   const syncLayout = driver.match(/syncLayout\(index: number\): void \{([\s\S]*?)\n  \}/)?.[1] ?? '';
   assert.match(source, /consecutiveLayoutIdleFrames < 2/);
   assert.match(source, /pswp\.isInteracting\(\)/);
+  assert.match(refreshFunction, /if \(pswp\.isInteracting\(\)\) \{[\s\S]*?layoutDeferredDuringInteraction = true;[\s\S]*?deferRefresh\(\)/);
+  assert.match(refreshFunction, /previousKeys !== nextKeys \|\| layoutDeferredDuringInteraction/);
   assert.match(refreshFunction, /pswp\.syncLayout\(targetSpread\)/);
   assert.doesNotMatch(refreshFunction, /destroy\(|initPhotoSwipe\(/);
   assert.doesNotMatch(syncLayout, /stopAll|mainScroll\?\.stop/);
@@ -117,12 +119,37 @@ test('dynamic spread changes keep the live Reader driver instead of rebuilding i
   assert.match(syncLayout, /staleSlide\.destroy\(\)/);
 });
 
+test('reader remapping always releases its guard and keeps HUD state image-aware', async () => {
+  const source = await readFile(path.join(srcRoot, 'reader/reader-controller.ts'), 'utf8');
+  const afterPrepend = source.match(/afterPrepend: itemCount => \{([\s\S]*?)\n    \},/)?.[1] ?? '';
+  const onPageAdded = source.match(/onPageAdded: direction => \{([\s\S]*?)\n    \},/)?.[1] ?? '';
+  const syncImages = source.match(/function syncImages\(\): void \{([\s\S]*?)\n  \}/)?.[1] ?? '';
+  const refreshFunction = source.match(/function refreshSpreadLayout\([\s\S]*?\n    refreshActiveLayout/)?.[0] ?? '';
+  const closeHandler = source.match(/pswp\.on\('close',[\s\S]*?\n    \}\);/)?.[0] ?? '';
+  assert.doesNotMatch(afterPrepend, /pswp|spreadLayout|startReinitializing/);
+  assert.match(onPageAdded, /refreshActiveLayout\(\)/);
+  assert.match(syncImages, /if \(!pswp\) \{[\s\S]*?spreadLayout = calculateSpreadLayout\(\)/);
+  assert.doesNotMatch(syncImages, /refreshSlide\(/);
+  assert.equal((refreshFunction.match(/finally \{/g) ?? []).length >= 2, true);
+  assert.match(refreshFunction, /finishReinitializing\(\)/);
+  assert.match(source, /onIdle: \(\) => refreshActiveHud\(\)/);
+  assert.doesNotMatch(source, /onIdle: \(\) => shell\.hideStatus\(\)/);
+  assert.match(source, /if \(activeLogicalIndices\(\)\.includes\(index\)\) refreshHudForCurrent\(\)/);
+  assert.match(source, /pswp\.init\(\);\s*refreshHudForCurrent\(\)/);
+  assert.match(source, /if \(pswp\.isCurrentContentLoaded\(\)\)[\s\S]*?pswp\.showUi\(\)/);
+  assert.doesNotMatch(closeHandler, /isReinitializing/);
+  assert.match(source, /function close\(\): void \{\s*if \(!isActive\) return;/);
+});
+
 test('stable spread slots do not collapse while the partner source is pending', async () => {
   const css = await readFile(path.join(srcRoot, 'reader/shell/reader.css'), 'utf8');
   const pageRule = css.match(/\.hr-reader-spread__page \{([\s\S]*?)\n\}/)?.[1] ?? '';
   const pendingRule = css.match(/\.hr-reader-spread__page--pending \{([\s\S]*?)\n\}/)?.[1] ?? '';
   assert.match(pageRule, /flex:\s*0 0 calc\(50% - 10px\)/);
   assert.doesNotMatch(pendingRule, /min-width:\s*1px/);
+  assert.match(pendingRule, /background:/);
+  assert.doesNotMatch(pendingRule, /background:\s*transparent/);
+  assert.match(css, /\.hr-reader-spread__page--pending::after[\s\S]*?animation:\s*hr-reader-pending-spin/);
   assert.match(css, /\.hr-reader-spread__page:not\(:only-child\):first-child[\s\S]*?object-position:\s*right center/);
   assert.match(css, /\.hr-reader-spread__page:not\(:only-child\):last-child[\s\S]*?object-position:\s*left center/);
 });

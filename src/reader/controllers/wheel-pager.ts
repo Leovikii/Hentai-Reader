@@ -6,12 +6,26 @@
  * the wheel moves, so paging halts a few frames after lift-off.
  */
 
+export type WheelPageLoadBehavior = 'ready' | 'frontier';
+
+export function getWheelPageLoadBehavior(
+  members: readonly number[],
+  isLoading: (member: number) => boolean,
+): WheelPageLoadBehavior {
+  const loadingCount = members.filter(isLoading).length;
+  // A double spread must remain navigable even when both members are pending.
+  // Its stable slots and Reader HUD provide loading feedback without turning
+  // network latency into an input lock. Single-page mode keeps its old frontier.
+  if (members.length === 1 && loadingCount === 1) return 'frontier';
+  return 'ready';
+}
+
 export interface WheelPagerConfig {
   getCurrentIndex: () => number;
   isCurrentZoomed: () => boolean;
   goTo: (index: number) => void;
   stopMotion: () => void;
-  isPageLoading: (index: number) => boolean;
+  getPageLoadBehavior: (index: number) => WheelPageLoadBehavior;
   onEdgeForward: () => void;
   onEdgeBackward: () => void;
   getImageCount: () => number;
@@ -80,13 +94,14 @@ export function createWheelPager(config: WheelPagerConfig): WheelPager {
         config.onEdgeForward();
         return;
       }
+      const loadBehavior = config.getPageLoadBehavior(target);
       config.stopMotion();
       config.goTo(target);
       lastTurnTime = now;
 
       // Landed on a still-loading image: latch so one gesture advances only to
       // the frontier, not past it. User must lift off and scroll again.
-      if (config.isPageLoading(target)) {
+      if (loadBehavior === 'frontier') {
         gestureConsumed = true;
       }
     }
