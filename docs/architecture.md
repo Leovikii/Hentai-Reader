@@ -101,8 +101,16 @@ viewer URL
 - 当前 Spread 的 HUD 必须聚合所有逻辑成员，Gallery 分页空闲不得覆盖图片下载状态。结构
   重映射与 prepend 的状态锁必须在 `finally` 中释放，Reader 关闭不得被该临时状态锁忽略。
 - 图片来源填充和结构重映射均不得在 Driver 手势、主滚动或动画期间刷新 Slide；交互结束后
-  至少等待连续两个空闲帧再原位更新。过渡期间保持 HUD，触摸设备在当前 Spread 未完整就绪时
-  保持 UI 可见，pending 槽不得是无反馈的纯黑区域。
+  至少等待连续两个空闲帧再原位更新。新的来源完成事件必须重新开始空闲帧计数，不得在统一
+  调度前直接调用 Driver 刷新。过渡期间保持 HUD；当前 Spread 未完整挂载时，桌面和触摸设备
+  都保持 UI 可见，pending 槽不得是无反馈的纯黑区域。
+- Driver 刷新前一页、当前页和下一页时，必须根据稳定 `currIndex` 映射到 holder 位置 0/1/2；
+  不得依赖可能已过期的 `currSlide` 反推 holder，也不得使用会先移除缓存再重新推断 holder 的
+  PhotoSwipe 公共索引刷新。屏外页只失效缓存；可见目标缺少 Slide 或 Spread DOM 时只重建精确
+  holder，重建当前页后同步 `currSlide` 与 active 状态。
+- Reader 的“当前内容已加载”不仅要求图片生命周期完成，还要求索引一致的当前 Slide 容器仍
+  挂在当前 holder，且所有 Spread 成员均已有图片节点。资源完成但 DOM 缺失时必须继续显示 HUD
+  和控件，并在正常 `change` 结束后的空闲帧防御性修复当前 holder。
 - Gallery 追加或前插改变表现页总数时，必须在 Session 索引调整完成后进入同一空闲帧重映射
   路径；不得先直接替换活动 `SpreadLayout` 再只刷新相邻 Slide。PhotoSwipe 可能已经为旧末页
   之后缓存越界 Content，只有完整 `syncLayout()` 才能清除该缓存并同步三个 holder 与新总数。

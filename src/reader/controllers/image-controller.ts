@@ -31,7 +31,6 @@ export interface ReaderImageControllerDeps {
   getCurrentIndex: () => number;
   getActiveIndices?: () => readonly number[];
   getSlideContentState: (index: number) => string | undefined;
-  refreshSlide: (index: number) => void;
   onPhaseChange: (index: number, phase: ReaderImagePhase) => void;
   onAssetReady: (index: number) => void;
 }
@@ -122,7 +121,6 @@ export function createReaderImageController(
       }
       byteState.set(viewerUrl, 'loaded');
       notify(viewerUrl);
-      deps.refreshSlide(liveIndex);
       deps.onAssetReady(liveIndex);
     }).catch(() => {
       if (disposed || leases.get(viewerUrl)?.lease !== lease) return;

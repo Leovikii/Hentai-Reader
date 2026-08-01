@@ -5,6 +5,20 @@ interface PhotoSwipeSlideLike {
 
 export type SpreadMouseClickAction = 'image' | 'background' | null;
 
+/**
+ * PhotoSwipe keeps the previous/current/next slides in holder positions 0/1/2.
+ * Resolve a visible target from the stable current index instead of a Slide
+ * reference that may already have been destroyed by a cache refresh.
+ */
+export function getPhotoSwipeHolderPosition(
+  currentIndex: number,
+  targetIndex: number,
+  holderCount: number,
+): number | null {
+  const position = targetIndex - currentIndex + 1;
+  return position >= 0 && position < holderCount ? position : null;
+}
+
 export function shouldHandleSpreadMouseClick(
   pointerType: string,
   defaultPrevented: boolean,

@@ -1,6 +1,7 @@
 import PhotoSwipe from 'photoswipe';
 import type { ReaderDriver, ReaderDriverOptions, ScreenPoint } from '../contracts';
 import {
+  getPhotoSwipeHolderPosition,
   getSpreadMouseClickAction,
   reconcilePhotoSwipeHolder,
   shouldHandleSpreadMouseClick,
@@ -126,14 +127,33 @@ export class PhotoSwipeDriver implements ReaderDriver {
   goTo(index: number): void { this.instance.goTo(index); }
   refreshSlide(index: number): void {
     const instance = this.instance as any;
-    const slide = instance.mainScroll?.itemHolders
-      ?.map((holder: any) => holder.slide)
-      .find((candidate: any) => candidate?.index === index);
-    if (slide && this.patchSpreadSlide(slide, instance.getItemData(index))) return;
+    const holders: any[] = instance.mainScroll?.itemHolders ?? [];
+    const holderPosition = getPhotoSwipeHolderPosition(
+      this.instance.currIndex,
+      index,
+      holders.length,
+    );
 
-    // An off-screen cached item must not retain stale presentation data. The
-    // public refresh path also rebuilds a visible non-spread fallback safely.
-    this.instance.refreshSlideContent(index);
+    // Off-screen data only needs its cache entry invalidated. PhotoSwipe's
+    // public indexed refresh would infer a holder from currSlide, whose
+    // reference may be stale while PhotoSwipe rotates the three holders.
+    if (holderPosition === null) {
+      instance.contentLoader?.removeByIndex?.(index);
+      return;
+    }
+
+    const holder = holders[holderPosition];
+    const itemData = instance.getItemData(index);
+    if (holder?.slide?.index === index && this.patchSpreadSlide(holder.slide, itemData)) return;
+
+    // Rebuild the exact stable holder when its Slide or Spread DOM is missing.
+    // This avoids destroying one holder and accidentally repopulating another.
+    instance.contentLoader?.removeByIndex?.(index);
+    instance.setContent(holder, index, true);
+    if (index === this.instance.currIndex) {
+      instance.currSlide = holder.slide;
+      holder.slide?.setIsActive?.(true);
+    }
   }
 
   syncLayout(index: number): void {
@@ -200,9 +220,31 @@ export class PhotoSwipeDriver implements ReaderDriver {
   }
 
   isCurrentContentLoaded(): boolean {
-    const content: any = this.instance.currSlide?.content;
+    const instance = this.instance as any;
+    const holders: any[] = instance.mainScroll?.itemHolders ?? [];
+    const holderPosition = getPhotoSwipeHolderPosition(
+      this.instance.currIndex,
+      this.instance.currIndex,
+      holders.length,
+    );
+    const holder = holderPosition === null ? undefined : holders[holderPosition];
+    const slide = holder?.slide;
+    if (!slide || slide.index !== this.instance.currIndex) return false;
+    if (slide.container?.parentElement !== holder.el) return false;
+
+    const content: any = slide.content;
     if (Array.isArray(content?.data?.hrSpread)) {
-      return content.data.hrSpread.every((page: any) => !!page.src);
+      if (!content.data.hrSpread.every((page: any) => !!page.src)) return false;
+      const root = slide.container?.querySelector?.('[data-reader-spread]') as HTMLElement | null;
+      if (!root) return false;
+      const images = new Map<number, HTMLImageElement>();
+      root.querySelectorAll<HTMLImageElement>('img.hr-reader-spread__page').forEach(image => {
+        images.set(Number(image.dataset.logicalIndex), image);
+      });
+      return content.data.hrSpread.every((page: any) => {
+        const image = images.get(Number(page.index));
+        return !!image?.getAttribute('src');
+      });
     }
     return content?.state === 'loaded';
   }

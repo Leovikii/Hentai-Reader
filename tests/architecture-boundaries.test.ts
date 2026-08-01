@@ -107,15 +107,18 @@ test('dynamic spread changes keep the live Reader driver instead of rebuilding i
   const driver = await readFile(path.join(srcRoot, 'reader/drivers/photoswipe-driver.ts'), 'utf8');
   const refreshFunction = source.match(/function refreshSpreadLayout\([\s\S]*?\n    const onResize/)?.[0] ?? '';
   const syncLayout = driver.match(/syncLayout\(index: number\): void \{([\s\S]*?)\n  \}/)?.[1] ?? '';
-  assert.match(source, /consecutiveLayoutIdleFrames < 2/);
+  assert.match(source, /idleFrames < 2/);
+  assert.match(source, /deferRefresh\(idleFrames \+ 1\)/);
   assert.match(source, /pswp\.isInteracting\(\)/);
-  assert.match(refreshFunction, /if \(pswp\.isInteracting\(\)\) \{[\s\S]*?layoutDeferredDuringInteraction = true;[\s\S]*?deferRefresh\(\)/);
-  assert.match(refreshFunction, /previousKeys !== nextKeys \|\| layoutDeferredDuringInteraction/);
+  assert.match(refreshFunction, /if \(pswp\.isInteracting\(\)\) \{[\s\S]*?layoutDeferredDuringInteraction = true;[\s\S]*?deferRefresh\(0\)/);
+  assert.match(refreshFunction, /requireIdleFrames \|\| previousKeys !== nextKeys \|\| layoutDeferredDuringInteraction/);
   assert.match(refreshFunction, /pswp\.syncLayout\(targetSpread\)/);
   assert.doesNotMatch(refreshFunction, /destroy\(|initPhotoSwipe\(/);
   assert.doesNotMatch(syncLayout, /stopAll|mainScroll\?\.stop/);
   assert.match(driver, /instance\.on\('afterSetContent'/);
   assert.match(driver, /reconcilePhotoSwipeHolder/);
+  assert.doesNotMatch(driver, /refreshSlideContent\(/);
+  assert.match(driver, /getPhotoSwipeHolderPosition/);
   assert.match(syncLayout, /staleSlide\.destroy\(\)/);
 });
 
@@ -135,8 +138,11 @@ test('reader remapping always releases its guard and keeps HUD state image-aware
   assert.match(source, /onIdle: \(\) => refreshActiveHud\(\)/);
   assert.doesNotMatch(source, /onIdle: \(\) => shell\.hideStatus\(\)/);
   assert.match(source, /if \(activeLogicalIndices\(\)\.includes\(index\)\) refreshHudForCurrent\(\)/);
+  assert.doesNotMatch(source, /refreshSlide:\s*index/);
+  assert.match(source, /refreshSpreadLayout\(session\.currentIndex, index, true\)/);
+  assert.match(source, /phase === 'loaded' && !pswp\.isCurrentContentLoaded\(\)/);
   assert.match(source, /pswp\.init\(\);\s*refreshHudForCurrent\(\)/);
-  assert.match(source, /if \(pswp\.isCurrentContentLoaded\(\)\)[\s\S]*?pswp\.showUi\(\)/);
+  assert.match(source, /if \(!pswp\.isCurrentContentLoaded\(\)\)[\s\S]*?pswp\.showUi\(\)/);
   assert.doesNotMatch(closeHandler, /isReinitializing/);
   assert.match(source, /function close\(\): void \{\s*if \(!isActive\) return;/);
 });

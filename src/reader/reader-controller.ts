@@ -298,12 +298,12 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     }
 
     function syncUiAvailabilityForCurrent(): void {
-      if (!hasTouchInput || !pswp) return;
-      if (pswp.isCurrentContentLoaded()) {
-        triggerMobileUITimeout();
-      } else {
+      if (!pswp) return;
+      if (!pswp.isCurrentContentLoaded()) {
         cancelMobileUITimeout();
         pswp.showUi();
+      } else if (hasTouchInput) {
+        triggerMobileUITimeout();
       }
     }
 
@@ -357,7 +357,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     const unsubscribeImageLoaded = deps.scroll.subscribeImageLoaded(({ index, element }) => {
       session.replaceImage(index, element);
       if (pswp && index >= 0 && index < session.imageCount) {
-        refreshSpreadLayout(session.currentIndex, index);
+        refreshSpreadLayout(session.currentIndex, index, true);
       }
     });
     pswp.on('destroy', () => {
@@ -381,7 +381,6 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
       getCurrentIndex: () => session.currentIndex,
       getActiveIndices: activeLogicalIndices,
       getSlideContentState: index => pswp?.getSlideContentState(spreadLayout.spreadIndexForLogical(index)),
-      refreshSlide: index => pswp?.refreshSlide(spreadLayout.spreadIndexForLogical(index)),
       onPhaseChange: (index, phase) => {
         const wasFailed = failedLogicalIndices.has(index);
         if (phase === 'error') failedLogicalIndices.add(index);
@@ -390,11 +389,11 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
         // A resolver may publish reliable source dimensions before byte load
         // completes (E-Hentai hath metadata). Re-evaluate the stable pair while
         // keeping the pending slot and the already visible member in place.
-        if (phase === 'downloading') refreshSpreadLayout(session.currentIndex, index);
+        if (phase === 'downloading') refreshSpreadLayout(session.currentIndex, index, true);
         if (activeLogicalIndices().includes(index)) refreshHudForCurrent();
       },
       onAssetReady: index => {
-        refreshSpreadLayout(session.currentIndex, index);
+        refreshSpreadLayout(session.currentIndex, index, true);
         refreshHudForCurrent();
         if (activeLogicalIndices().includes(index)) syncUiAvailabilityForCurrent();
         if (activeLogicalIndices().includes(index)
@@ -406,40 +405,45 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     let resizeRaf = 0;
     let deferredLayoutRaf = 0;
     let hudRefreshRaf = 0;
-    let consecutiveLayoutIdleFrames = 0;
     let layoutDeferredDuringInteraction = false;
     function refreshSpreadLayout(
       preferredLogicalIndex = session.currentIndex,
       refreshLogicalIndex = preferredLogicalIndex,
+      requireIdleFrames = false,
+      idleFrames = 0,
     ): void {
       if (!pswp) return;
       const previousKeys = spreadLayout.spreads.map(spread => spread.key).join('|');
       const next = calculateSpreadLayout(preferredLogicalIndex);
       const nextKeys = next.spreads.map(spread => spread.key).join('|');
-      const deferRefresh = () => {
+      const deferRefresh = (nextIdleFrames: number) => {
         cancelAnimationFrame(deferredLayoutRaf);
         deferredLayoutRaf = requestAnimationFrame(() => {
           deferredLayoutRaf = 0;
-          refreshSpreadLayout(preferredLogicalIndex, refreshLogicalIndex);
+          refreshSpreadLayout(
+            preferredLogicalIndex,
+            refreshLogicalIndex,
+            requireIdleFrames,
+            nextIdleFrames,
+          );
         });
       };
       // Source arrival can otherwise rebuild a current/neighbor Slide while a
       // keyboard, wheel, click or swipe transition is still moving its holder.
       if (pswp.isInteracting()) {
         layoutDeferredDuringInteraction = true;
-        consecutiveLayoutIdleFrames = 0;
-        deferRefresh();
+        deferRefresh(0);
         return;
       }
-      if (previousKeys !== nextKeys || layoutDeferredDuringInteraction) {
-        consecutiveLayoutIdleFrames++;
-        if (consecutiveLayoutIdleFrames < 2) {
-          deferRefresh();
+      if (requireIdleFrames || previousKeys !== nextKeys || layoutDeferredDuringInteraction) {
+        // External source/change callbacks always start at zero; repeated
+        // completions therefore restart (rather than advance) the settle gate.
+        if (idleFrames < 2) {
+          deferRefresh(idleFrames + 1);
           return;
         }
       }
       layoutDeferredDuringInteraction = false;
-      consecutiveLayoutIdleFrames = 0;
       spreadLayout = next;
       const targetSpread = spreadLayout.spreadIndexForLogical(preferredLogicalIndex);
       if (targetSpread < 0) return;
@@ -472,7 +476,11 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
         }
       } else {
         const refreshSpread = spreadLayout.spreadIndexForLogical(refreshLogicalIndex);
-        if (refreshSpread >= 0) pswp.refreshSlide(refreshSpread);
+        if (refreshSpread >= 0) {
+          pswp.refreshSlide(refreshSpread);
+          refreshHudForCurrent();
+          syncUiAvailabilityForCurrent();
+        }
       }
     }
     refreshActiveLayout = () => refreshSpreadLayout(session.currentIndex);
@@ -504,7 +512,9 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
             : phases.includes('downloading')
               ? 'downloading'
               : 'loaded';
-      showImagePhase(phase);
+      showImagePhase(phase === 'loaded' && !pswp.isCurrentContentLoaded()
+        ? 'downloading'
+        : phase);
     }
     refreshActiveHud = refreshHudForCurrent;
 
@@ -597,6 +607,11 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
              }
            }
         }
+
+        // A destination may have been cached as a pending or empty Content.
+        // Once the transition settles, reconcile the exact current holder even
+        // when no new network completion event fires.
+        refreshSpreadLayout(session.currentIndex, session.currentIndex, true);
 
         // Byte-prefetch a small window in the travel direction (and release
         // downloads left behind, including everything skipped by a panel jump).

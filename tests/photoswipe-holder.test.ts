@@ -1,10 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  getPhotoSwipeHolderPosition,
   getSpreadMouseClickAction,
   reconcilePhotoSwipeHolder,
   shouldHandleSpreadMouseClick,
 } from '../src/reader/drivers/photoswipe-holder.ts';
+
+test('maps only previous/current/next indices to stable holder positions', () => {
+  assert.equal(getPhotoSwipeHolderPosition(4, 3, 3), 0);
+  assert.equal(getPhotoSwipeHolderPosition(4, 4, 3), 1);
+  assert.equal(getPhotoSwipeHolderPosition(4, 5, 3), 2);
+  assert.equal(getPhotoSwipeHolderPosition(4, 2, 3), null);
+  assert.equal(getPhotoSwipeHolderPosition(4, 6, 3), null);
+});
 
 interface FakeContainer {
   classList: { contains: (name: string) => boolean };
