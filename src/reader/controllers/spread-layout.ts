@@ -13,6 +13,7 @@ export interface SpreadViewport {
 
 export interface ReaderSpread {
   key: string;
+  state: 'single' | 'pending-pair' | 'pair';
   logicalIndices: readonly number[];
   primaryIndex: number;
   width: number;
@@ -27,6 +28,7 @@ export interface SpreadLayout {
 }
 
 const DEFAULT_GUTTER = 20;
+const UNKNOWN_PORTRAIT_RATIO = 2 / 3;
 
 function hasReliablePortraitSize(page: SpreadPage | undefined): page is Required<Pick<SpreadPage, 'key' | 'width' | 'height'>> & SpreadPage {
   return !!page
@@ -38,17 +40,34 @@ function hasReliablePortraitSize(page: SpreadPage | undefined): page is Required
     && page.width! < page.height!;
 }
 
-function canPair(
+function portraitRatio(page: SpreadPage | undefined): number | undefined | null {
+  if (!page || page.failed) return null;
+  const hasSize = Number.isFinite(page.width)
+    && Number.isFinite(page.height)
+    && (page.width ?? 0) > 0
+    && (page.height ?? 0) > 0;
+  if (!hasSize) return undefined;
+  if (!hasReliablePortraitSize(page)) return null;
+  return page.width! / page.height!;
+}
+
+function pairState(
   first: SpreadPage | undefined,
   second: SpreadPage | undefined,
   enabled: boolean,
   viewport: SpreadViewport,
-): first is Required<Pick<SpreadPage, 'key' | 'width' | 'height'>> & SpreadPage {
-  if (!enabled || !hasReliablePortraitSize(first) || !hasReliablePortraitSize(second)) return false;
-  if (!(viewport.width > 0) || !(viewport.height > 0)) return false;
+): 'pending-pair' | 'pair' | null {
+  if (!enabled || !first || !second || !(viewport.width > 0) || !(viewport.height > 0)) return null;
+  const firstRatio = portraitRatio(first);
+  const secondRatio = portraitRatio(second);
+  if (firstRatio === null || secondRatio === null) return null;
   const gutter = Math.max(0, viewport.gutter ?? DEFAULT_GUTTER);
-  const fittedWidth = viewport.height * (first.width / first.height + second.width / second.height);
-  return fittedWidth + gutter <= viewport.width;
+  const fittedWidth = viewport.height * (
+    (firstRatio ?? UNKNOWN_PORTRAIT_RATIO)
+    + (secondRatio ?? UNKNOWN_PORTRAIT_RATIO)
+  );
+  if (fittedWidth + gutter > viewport.width) return null;
+  return firstRatio === undefined || secondRatio === undefined ? 'pending-pair' : 'pair';
 }
 
 function createSingle(page: SpreadPage, index: number): ReaderSpread {
@@ -56,6 +75,7 @@ function createSingle(page: SpreadPage, index: number): ReaderSpread {
   const height = page.height && page.height > 0 ? page.height : 1;
   return {
     key: `single:${page.key}`,
+    state: 'single',
     logicalIndices: [index],
     primaryIndex: index,
     width,
@@ -71,23 +91,23 @@ export function createSpreadLayout(
 ): SpreadLayout {
   const spreads: ReaderSpread[] = [];
   const logicalToSpread = new Array<number>(pages.length);
-  const gutter = Math.max(0, viewport.gutter ?? DEFAULT_GUTTER);
 
   for (let index = 0; index < pages.length; index += 2) {
     const first = pages[index];
     const second = pages[index + 1];
-    if (second && canPair(first, second, enabled, viewport)) {
-      const height = viewport.height;
-      const firstWidth = height * (first.width! / first.height!);
-      const secondWidth = height * (second.width! / second.height!);
+    const state = pairState(first, second, enabled, viewport);
+    if (second && state) {
       const preferredIndex = preferredPrimaryKey === second.key ? index + 1 : index;
       const spreadIndex = spreads.length;
       spreads.push({
-        key: `double:${first.key}:${second.key}`,
+        key: `pair:${first.key}:${second.key}`,
+        state,
         logicalIndices: [index, index + 1],
         primaryIndex: preferredIndex,
-        width: firstWidth + gutter + secondWidth,
-        height,
+        // A pair owns the complete Reader viewport. Equal external page slots
+        // stay fixed while a source or its dimensions are still in flight.
+        width: viewport.width,
+        height: viewport.height,
       });
       logicalToSpread[index] = spreadIndex;
       logicalToSpread[index + 1] = spreadIndex;

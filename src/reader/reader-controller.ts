@@ -18,7 +18,11 @@ import type {
 import { createReaderShell } from './shell/reader-shell';
 import { ReaderSession } from './reader-session';
 import { createThumbnailController } from './controllers/thumbnail-controller';
-import { acquireImage, getCachedImage } from '../services/image-load-runtime';
+import {
+  acquireImage,
+  getCachedImage,
+  getImageDimensionsHint,
+} from '../services/image-load-runtime';
 import { LOAD_PRIORITY } from '../state/load-policy';
 import type { ReaderPrefetchPolicy } from '../core/site-adapter';
 import {
@@ -69,8 +73,9 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
       const item = session.itemAt(index);
       const element = session.elementAt(index);
       const cached = item && getCachedImage(item.viewerUrl);
-      let width = cached?.width ?? item?.dimensions?.width;
-      let height = cached?.height ?? item?.dimensions?.height;
+      const sourceHint = item && getImageDimensionsHint(item.viewerUrl);
+      let width = cached?.width ?? item?.dimensions?.width ?? sourceHint?.width;
+      let height = cached?.height ?? item?.dimensions?.height ?? sourceHint?.height;
       const previewSize = item?.preview.kind === 'url'
         ? item.preview.size
         : item?.preview.kind === 'sprite'
@@ -368,6 +373,10 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
         if (phase === 'error') failedLogicalIndices.add(index);
         else if (phase === 'loaded') failedLogicalIndices.delete(index);
         if (wasFailed !== failedLogicalIndices.has(index)) refreshActiveLayout();
+        // A resolver may publish reliable source dimensions before byte load
+        // completes (E-Hentai hath metadata). Re-evaluate the stable pair while
+        // keeping the pending slot and the already visible member in place.
+        if (phase === 'downloading') refreshSpreadLayout(session.currentIndex, index);
         if (activeLogicalIndices().includes(index)) showImagePhase(phase);
       },
       onAssetReady: index => {
@@ -380,6 +389,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
 
     let resizeRaf = 0;
     let deferredLayoutRaf = 0;
+    let consecutiveLayoutIdleFrames = 0;
     function refreshSpreadLayout(
       preferredLogicalIndex = session.currentIndex,
       refreshLogicalIndex = preferredLogicalIndex,
@@ -388,14 +398,19 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
       const previousKeys = spreadLayout.spreads.map(spread => spread.key).join('|');
       const next = calculateSpreadLayout(preferredLogicalIndex);
       const nextKeys = next.spreads.map(spread => spread.key).join('|');
-      if (previousKeys !== nextKeys && pswp.isInteracting()) {
-        cancelAnimationFrame(deferredLayoutRaf);
-        deferredLayoutRaf = requestAnimationFrame(() => {
-          deferredLayoutRaf = 0;
-          refreshSpreadLayout(preferredLogicalIndex, refreshLogicalIndex);
-        });
-        return;
+      if (previousKeys !== nextKeys) {
+        if (pswp.isInteracting()) consecutiveLayoutIdleFrames = 0;
+        else consecutiveLayoutIdleFrames++;
+        if (consecutiveLayoutIdleFrames < 2) {
+          cancelAnimationFrame(deferredLayoutRaf);
+          deferredLayoutRaf = requestAnimationFrame(() => {
+            deferredLayoutRaf = 0;
+            refreshSpreadLayout(preferredLogicalIndex, refreshLogicalIndex);
+          });
+          return;
+        }
       }
+      consecutiveLayoutIdleFrames = 0;
       spreadLayout = next;
       const targetSpread = spreadLayout.spreadIndexForLogical(preferredLogicalIndex);
       if (targetSpread < 0) return;

@@ -450,6 +450,46 @@ test('protects leased scroll Blobs and returns to the cache bound after final re
   reverse.release();
 });
 
+test('exposes source dimension metadata while bytes load without treating it as decoded', async () => {
+  let finishDownload!: (dimensions: { width: number; height: number }) => void;
+  let byteLoads = 0;
+  const downloading = new Promise<{ width: number; height: number }>(resolve => {
+    finishDownload = resolve;
+  });
+  const service = new ImageLoadService({
+    resolve: async () => ({
+      src: 'https://images.example.test/page.webp',
+      sourceDimensions: { width: 1024, height: 1536 },
+    }),
+    loadBytes: async () => {
+      byteLoads++;
+      return downloading;
+    },
+    delay: noDelay,
+  });
+
+  const lease = service.acquire('viewer', { intent: 'foreground', priority: 100 });
+  await new Promise<void>(resolve => {
+    const unsubscribe = lease.subscribe(phase => {
+      if (phase !== 'downloading') return;
+      unsubscribe();
+      resolve();
+    });
+  });
+  assert.deepEqual(service.getDimensionsHint('viewer'), { width: 1024, height: 1536 });
+  assert.equal(byteLoads, 1);
+
+  finishDownload({ width: 1000, height: 1500 });
+  assert.deepEqual(await lease.result, {
+    src: 'https://images.example.test/page.webp',
+    sourceDimensions: { width: 1024, height: 1536 },
+    width: 1000,
+    height: 1500,
+  });
+  assert.equal(service.getDimensionsHint('viewer'), undefined);
+  lease.release();
+});
+
 test('reuses dimensions from an already-decoded materialized Blob', async () => {
   let byteLoads = 0;
   const service = new ImageLoadService({

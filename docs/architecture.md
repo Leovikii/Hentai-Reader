@@ -38,6 +38,8 @@ docs/                     开发者与 Agent 文档
 - `GalleryItem` 必须提供稳定唯一的 `key`、`viewerUrl` 和标准 `preview`。
 - `GalleryPage.position` 可提供初始全局索引和每页数量；适配器不得直接写 Store。
 - `dimensions` 只有在站点确实提前知道原图尺寸时才能提供，不能为了几何额外请求图片。
+- `ResolvedImage.sourceDimensions` 是适配器在解析显示源后提供的可靠可选尺寸元数据；它只可
+  用于提前几何判定，不能冒充已解码结果或跳过图片字节加载。
 - `SiteAdapter` 负责匹配、页面解析、图片解析/转换、容器和必要的站点生命周期回调。
 - 站点确实需要 Reader 关闭时同步 URL，才实现 `onReaderClose()`。
 - Reader 预取范围可以由通用 `readerPrefetch` 能力覆盖；默认值与阶段策略由共享层管理。
@@ -78,12 +80,18 @@ viewer URL
 
 - `ReaderSession` 持有当前逻辑索引和 live DOM 注册，不持有 PhotoSwipe 或站点状态。
 - Reader Controller 组织图片、预取、分页、缩略图、滚轮和自动播放控制器。
-- Spread Layout 以固定 0+1、2+3 配对槽位把逻辑页映射为表现页；横图、未知尺寸、失败页或
-  宽度不足时拆为单页，重算时以稳定 key 保持主逻辑页。
+- Spread Layout 以固定 0+1、2+3 配对槽位把逻辑页映射为表现页；宽屏且尚无横图/失败反证
+  时，未知尺寸使用待确认双页并预留两个稳定槽位。横图、失败页或宽度不足时拆为单页，
+  重算时以稳定 key 保持主逻辑页。
 - Reader Shell 只依赖 Reader 契约和 Driver，不直接读取全局 Store。
 - PhotoSwipe 包导入、`currSlide` 等内部访问和手势挂载只允许在 Driver。
-- 单页与双页共用稳定的 Spread DOM 容器；尺寸或来源迟到时 Driver 原位更新图片节点并同步
-  三个表现 holder，不销毁 PhotoSwipe 根实例。手势或过渡期间延后结构重映射。
+- 单页与双页共用稳定的 Spread DOM 容器；双页成员各占一个不随来源到达而塌缩的等分槽，
+  左右页分别朝书脊对齐。尺寸或来源迟到时 Driver 原位更新图片节点并同步三个表现 holder，
+  不销毁 PhotoSwipe 根实例。结构重映射至少等待连续两个空闲帧，不强停 PhotoSwipe 动画、
+  手势或垂直关闭回弹。
+- 每个 PhotoSwipe item holder 在任何时刻只能保留一个活动 `pswp__zoom-wrap`。强制内容重映射
+  若先丢失旧 Slide 引用，Driver 必须在新内容挂载完成时销毁仍连接的旧 Slide，并清除无法
+  追踪的孤儿 wrapper；缓存失效不得只销毁 Content 而遗留 Slide 容器。
 - 桌面滚轮、键盘、点击区、移动滑动、双指缩放、垂直关闭和 UI 区域事件屏蔽是兼容红线。
 - Reader 关闭未导航时恢复进入前 scrollY；已导航时按稳定 key 找到卷轴元素并执行一次直接
   定位。关闭后不得用 Observer/Timer 再次抢夺用户滚动位置。
@@ -97,8 +105,8 @@ viewer URL
   关闭后只恢复当前视口附近的 placeholder，避免旧位置任务与 Reader 前台图片竞争。
 - 图片生命周期默认总并发 4、后台最多 2；公共 Reader 预取窗口为前方 5、后方 2，适配器
   可以按真实站点证据覆盖范围，但当前站点均使用公共默认值。
-- 已知可靠原图尺寸、URL preview size 或 Sprite crop 可以稳定 placeholder 和双页预判；未知
-  尺寸使用公共降级，不额外下载图片。
+- 已知可靠原图尺寸、适配器解析后的标准源尺寸提示、URL preview size 或 Sprite crop 可以
+  稳定 placeholder 和双页预判；未知尺寸使用公共待确认/单页降级，不额外下载图片。
 - 4KHD 正文静态 `width/height` 已证实可能与原图比例不同，不得作为可靠 `dimensions`。
 - Reader 关闭定位只使用共享缓存中已经存在的自然尺寸，不为定位创建新图片任务。
 - URL/Sprite 缩略图直接使用 Preview Descriptor。
@@ -116,6 +124,8 @@ viewer URL
 ### E-Hentai / ExHentai
 
 - Gallery Item 指向 viewer 页面；解析后才得到 hath 图片 URL。
+- 已验证的 hath 原图 URL 路径包含源宽高；解析语法、域名约束和异常值校验只存在于
+  E-Hentai 适配器，并通过标准 `sourceDimensions` 发布。共享加载层和 Reader 不识别该 URL。
 - viewer 和 Gallery 页面请求共享站点 limiter；429/503 在释放槽位前触发 cooldown。
 - `nl` token 驱动串行节点切换；不得并行竞速或重复已经失败的来源。
 - 普通缩略图和 Sprite crop 均通过标准 Preview Descriptor。

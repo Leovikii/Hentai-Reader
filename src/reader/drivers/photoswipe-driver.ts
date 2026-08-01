@@ -1,10 +1,12 @@
 import PhotoSwipe from 'photoswipe';
 import type { ReaderDriver, ReaderDriverOptions, ScreenPoint } from '../contracts';
+import { reconcilePhotoSwipeHolder } from './photoswipe-holder';
 
 export type { ScreenPoint } from '../contracts';
 
 export class PhotoSwipeDriver implements ReaderDriver {
   private readonly instance: PhotoSwipe;
+  private readonly slidesByHolder = new WeakMap<HTMLElement, any>();
 
   constructor(options: ReaderDriverOptions) {
     this.instance = new PhotoSwipe({
@@ -63,6 +65,12 @@ export class PhotoSwipeDriver implements ReaderDriver {
     this.instance.addFilter('isContentZoomable', (zoomable: boolean, content: any) => (
       Array.isArray(content?.data?.hrSpread) ? true : zoomable
     ));
+    this.instance.on('afterSetContent', ({ slide }: any) => {
+      const holderElement = slide?.holderElement as HTMLElement | undefined;
+      if (!holderElement) return;
+      reconcilePhotoSwipeHolder(holderElement, slide, this.slidesByHolder.get(holderElement));
+      this.slidesByHolder.set(holderElement, slide);
+    });
   }
 
   get currentIndex(): number {
@@ -95,12 +103,12 @@ export class PhotoSwipeDriver implements ReaderDriver {
 
   syncLayout(index: number): void {
     const instance = this.instance as any;
-    instance.animations?.stopAll?.();
-    instance.mainScroll?.stop?.();
 
     // PhotoSwipe's goTo is synchronous when no animation flag is supplied.
-    // Run it after the Reader has published the new numItems/itemData mapping,
-    // then reconcile all three holders against their new expected indices.
+    // The Reader only calls this after two consecutive idle frames. Do not
+    // forcibly stop PhotoSwipe animations here: doing so can freeze a vertical
+    // close rebound with a translated zoom-wrap and a translucent background.
+    // Reconcile all three holders against the newly published mapping in place.
     this.instance.goTo(index);
     const itemCount = this.instance.getNumItems();
     const holders: any[] = instance.mainScroll?.itemHolders ?? [];
@@ -123,12 +131,13 @@ export class PhotoSwipeDriver implements ReaderDriver {
 
     instance.currSlide = holders[1]?.slide;
     const visibleContents = new Set(holders.map(holder => holder.slide?.content).filter(Boolean));
-    const cachedItems: any[] = instance.contentLoader?._cachedItems ?? [];
+    const cachedItems: any[] = [...(instance.contentLoader?._cachedItems ?? [])];
     for (const content of cachedItems) {
-      if (!visibleContents.has(content)) content.destroy();
-    }
-    if (instance.contentLoader) {
-      instance.contentLoader._cachedItems = cachedItems.filter(content => visibleContents.has(content));
+      if (visibleContents.has(content)) continue;
+      const staleSlide = content.slide;
+      if (staleSlide?.container?.parentElement) staleSlide.destroy();
+      content.destroy();
+      instance.contentLoader?.removeByIndex?.(content.index);
     }
 
     this.instance.element?.classList.toggle('pswp--one-slide', itemCount === 1);

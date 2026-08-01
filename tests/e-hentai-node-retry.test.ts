@@ -33,7 +33,7 @@ test('E-Hentai follows an nl chain and publishes the first healthy Hath source',
     viewerRequests.push({ url, cache: init?.cache });
     const token = new URL(url).searchParams.get('nl');
     const html = token === 'node-c'
-      ? '<img id="img" src="https://node-c.hath.network/image.webp">'
+      ? '<img id="img" src="https://node-c.hath.network/h/2379dda717a73ddb24c4912d174d564bbc7358fb-89534-800-1200-wbp/key/image.webp">'
       : token === 'node-b'
         ? '<img id="img" src="https://node-b.hath.network/image.webp" onerror="return nl(\'node-c\')">'
         : '<img id="img" src="https://node-a.hath.network/image.webp" onerror="return nl(\'node-b\')">';
@@ -64,11 +64,12 @@ test('E-Hentai follows an nl chain and publishes the first healthy Hath source',
     const unsubscribe = lease.subscribe(phase => phases.push(phase));
     const asset = await lease.result;
 
-    assert.equal(asset?.src, 'https://node-c.hath.network/image.webp');
+    assert.equal(asset?.src, 'https://node-c.hath.network/h/2379dda717a73ddb24c4912d174d564bbc7358fb-89534-800-1200-wbp/key/image.webp');
+    assert.deepEqual(asset?.sourceDimensions, { width: 800, height: 1200 });
     assert.deepEqual(byteRequests, [
       'https://node-a.hath.network/image.webp',
       'https://node-b.hath.network/image.webp',
-      'https://node-c.hath.network/image.webp',
+      'https://node-c.hath.network/h/2379dda717a73ddb24c4912d174d564bbc7358fb-89534-800-1200-wbp/key/image.webp',
     ]);
     assert.deepEqual(viewerRequests, [
       { url: viewerUrl, cache: undefined },

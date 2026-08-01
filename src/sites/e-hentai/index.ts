@@ -87,6 +87,7 @@ export const EHentaiAdapter: SiteAdapter = {
     return {
       src: viewer.src,
       ...(viewer.nl ? { retryToken: viewer.nl } : {}),
+      ...(viewer.dimensions ? { sourceDimensions: viewer.dimensions } : {}),
       loadTimeoutMs: context.priority >= LOAD_PRIORITY.foreground - 10
         ? REQUEST_POLICY.foregroundLoadTimeoutMs
         : REQUEST_POLICY.backgroundLoadTimeoutMs,

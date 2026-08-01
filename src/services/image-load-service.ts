@@ -90,6 +90,7 @@ interface ActiveLoad {
   sourceRetryLeases: Set<symbol>;
   priority: number;
   lane: ImageTaskLane;
+  dimensionsHint?: { width: number; height: number };
   result: Promise<LoadedImage | null>;
 }
 
@@ -175,6 +176,11 @@ export class ImageLoadService {
     return this.cache.get(url)?.asset;
   }
 
+  /** Metadata exposed only while a source is actively resolving/downloading. */
+  getDimensionsHint(url: string): { width: number; height: number } | undefined {
+    return this.active.get(url)?.dimensionsHint;
+  }
+
   getLatestCached(): LoadedImage | undefined {
     let latest: LoadedImage | undefined;
     for (const entry of this.cache.values()) latest = entry.asset;
@@ -222,6 +228,7 @@ export class ImageLoadService {
       this.setPhase(url, 'resolving');
       const candidate = await this.resolve(url, undefined, attempt > 0, load);
       resolved = await this.materialize(url, candidate, load);
+      this.rememberDimensionsHint(load, resolved?.sourceDimensions);
       if (resolved?.src) break;
       if (attempt + 1 < this.policy.resolveAttempts) await this.wait(signal);
     }
@@ -256,6 +263,7 @@ export class ImageLoadService {
       attemptedSources.add(next.src);
       this.discard(url, resolved);
       resolved = next;
+      this.rememberDimensionsHint(load, next.sourceDimensions);
       loaded = await this.tryLoad(url, next, load);
     }
 
@@ -275,6 +283,7 @@ export class ImageLoadService {
       attemptedSources.add(next.src);
       this.discard(url, resolved);
       resolved = next;
+      this.rememberDimensionsHint(load, next.sourceDimensions);
       loaded = await this.tryLoad(url, next, load);
     }
 
@@ -465,6 +474,24 @@ export class ImageLoadService {
   /** Background speculation must not fan one failed byte request into a node switch. */
   private canRetrySource(intent: ImageLoadIntent): boolean {
     return intent === 'foreground' || intent === 'neighbor' || intent === 'scroll';
+  }
+
+  private rememberDimensionsHint(
+    load: ActiveLoad,
+    dimensions: ResolvedImage['sourceDimensions'],
+  ): void {
+    if (!dimensions
+        || !Number.isFinite(dimensions.width)
+        || !Number.isFinite(dimensions.height)
+        || dimensions.width <= 0
+        || dimensions.height <= 0) {
+      load.dimensionsHint = undefined;
+      return;
+    }
+    load.dimensionsHint = {
+      width: dimensions.width,
+      height: dimensions.height,
+    };
   }
 
   private defaultLane(intent: ImageLoadIntent): ImageTaskLane {

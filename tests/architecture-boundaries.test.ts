@@ -67,6 +67,16 @@ test('public image contracts use generic retry terminology', async () => {
   assert.equal(/\bnl(?:Token)?\b/.test(contracts.join('\n')), false);
 });
 
+test('E-Hentai source URL syntax stays inside its site adapter', async () => {
+  const files = await sourceFiles(srcRoot);
+  for (const file of files) {
+    const relative = path.relative(srcRoot, file).replace(/\\/g, '/');
+    if (relative.startsWith('sites/e-hentai/')) continue;
+    const source = await readFile(file, 'utf8');
+    assert.equal(/hath\.network|HATH_SOURCE_PATTERN|keystamp=/.test(source), false, relative);
+  }
+});
+
 test('transitional feature and legacy reader UI files are gone', async () => {
   const removed = [
     'features/scroll-mode.ts',
@@ -94,10 +104,27 @@ test('PhotoSwipe package and internal fields stay behind the driver', async () =
 
 test('dynamic spread changes keep the live Reader driver instead of rebuilding it', async () => {
   const source = await readFile(path.join(srcRoot, 'reader/reader-controller.ts'), 'utf8');
-  const branch = source.match(/if \(previousKeys !== nextKeys\) \{([\s\S]*?)\n      \}/)?.[1] ?? '';
-  assert.match(source, /previousKeys !== nextKeys && pswp\.isInteracting\(\)/);
-  assert.match(branch, /pswp\.syncLayout\(targetSpread\)/);
-  assert.doesNotMatch(branch, /destroy\(|initPhotoSwipe\(/);
+  const driver = await readFile(path.join(srcRoot, 'reader/drivers/photoswipe-driver.ts'), 'utf8');
+  const refreshFunction = source.match(/function refreshSpreadLayout\([\s\S]*?\n    const onResize/)?.[0] ?? '';
+  const syncLayout = driver.match(/syncLayout\(index: number\): void \{([\s\S]*?)\n  \}/)?.[1] ?? '';
+  assert.match(source, /consecutiveLayoutIdleFrames < 2/);
+  assert.match(source, /pswp\.isInteracting\(\)/);
+  assert.match(refreshFunction, /pswp\.syncLayout\(targetSpread\)/);
+  assert.doesNotMatch(refreshFunction, /destroy\(|initPhotoSwipe\(/);
+  assert.doesNotMatch(syncLayout, /stopAll|mainScroll\?\.stop/);
+  assert.match(driver, /instance\.on\('afterSetContent'/);
+  assert.match(driver, /reconcilePhotoSwipeHolder/);
+  assert.match(syncLayout, /staleSlide\.destroy\(\)/);
+});
+
+test('stable spread slots do not collapse while the partner source is pending', async () => {
+  const css = await readFile(path.join(srcRoot, 'reader/shell/reader.css'), 'utf8');
+  const pageRule = css.match(/\.hr-reader-spread__page \{([\s\S]*?)\n\}/)?.[1] ?? '';
+  const pendingRule = css.match(/\.hr-reader-spread__page--pending \{([\s\S]*?)\n\}/)?.[1] ?? '';
+  assert.match(pageRule, /flex:\s*0 0 calc\(50% - 10px\)/);
+  assert.doesNotMatch(pendingRule, /min-width:\s*1px/);
+  assert.match(css, /\.hr-reader-spread__page:not\(:only-child\):first-child[\s\S]*?object-position:\s*right center/);
+  assert.match(css, /\.hr-reader-spread__page:not\(:only-child\):last-child[\s\S]*?object-position:\s*left center/);
 });
 
 test('owned-image cleanup is observer-driven and expensive materialization is serialized', async () => {

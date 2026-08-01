@@ -102,6 +102,10 @@ export function getCachedImage(url: string) {
   return imageLoadService.getCached(url);
 }
 
+export function getImageDimensionsHint(url: string) {
+  return imageLoadService.getDimensionsHint(url);
+}
+
 export function getLatestCachedImage() {
   return imageLoadService.getLatestCached();
 }

@@ -6,6 +6,7 @@ import {
   getEHentaiNextUrl,
   getEHentaiPrevUrl,
   parseEHentaiPageMetadata,
+  parseEHentaiSourceDimensions,
   parseEHentaiViewer,
 } from '../src/sites/e-hentai/gallery.ts';
 
@@ -103,5 +104,32 @@ test('builds and parses E-Hentai viewer node-switch data once per document', () 
   assert.deepEqual(parseEHentaiViewer(doc), {
     src: 'https://ehgt.org/full-image.jpg',
     nl: 'next-node',
+  });
+});
+
+test('keeps hath URL dimension parsing inside the E-Hentai adapter boundary', () => {
+  const source = 'https://vbuunoj.yejgkoluhrxt.hath.network:9999/h/2379dda717a73ddb24c4912d174d564bbc7358fb-89534-1024-1536-wbp/keystamp=1785561600-a73c4632fc;fileindex=249326105;xres=1280/067.webp';
+  assert.deepEqual(parseEHentaiSourceDimensions(source), { width: 1024, height: 1536 });
+  assert.equal(parseEHentaiSourceDimensions(source.replace('hath.network', 'example.test')), undefined);
+  assert.equal(parseEHentaiSourceDimensions('https://node.hath.network/image.webp'), undefined);
+  assert.equal(
+    parseEHentaiSourceDimensions('https://node.hath.network/h/2379dda717a73ddb24c4912d174d564bbc7358fb-1-0-1536-wbp/file.webp'),
+    undefined,
+  );
+});
+
+test('publishes hath source dimensions with viewer metadata before byte loading', () => {
+  const src = 'https://node.hath.network/h/2379dda717a73ddb24c4912d174d564bbc7358fb-89534-900-1400-jpg/key/1.jpg';
+  const image = {
+    src,
+    getAttribute: (name: string) => name === 'onerror' ? "return nl('next-node')" : null,
+  };
+  const doc = {
+    querySelector: (selector: string) => selector === '#img' ? image : null,
+  } as unknown as Document;
+  assert.deepEqual(parseEHentaiViewer(doc), {
+    src,
+    nl: 'next-node',
+    dimensions: { width: 900, height: 1400 },
   });
 });

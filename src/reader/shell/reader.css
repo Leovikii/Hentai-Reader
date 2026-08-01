@@ -539,19 +539,30 @@
 }
 
 .hr-reader-spread__page {
+  box-sizing: border-box;
   display: block;
-  width: auto;
+  width: calc(50% - 10px);
   max-width: calc(50% - 10px);
   height: 100%;
   object-fit: contain;
-  flex: 0 1 auto;
+  flex: 0 0 calc(50% - 10px);
 }
 
 .hr-reader-spread__page:only-child {
+  width: 100%;
   max-width: 100%;
+  flex-basis: 100%;
+}
+
+.hr-reader-spread__page:not(:only-child):first-child {
+  object-position: right center;
+}
+
+.hr-reader-spread__page:not(:only-child):last-child {
+  object-position: left center;
 }
 
 .hr-reader-spread__page--pending {
-  min-width: 1px;
+  min-width: 0;
   background: transparent;
 }

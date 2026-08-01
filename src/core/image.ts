@@ -1,5 +1,13 @@
 export interface ResolvedImage {
   src: string;
+  /**
+   * Reliable display-source dimensions known before its bytes finish loading.
+   * This is metadata only and must never be used to skip the byte-load step.
+   */
+  sourceDimensions?: {
+    width: number;
+    height: number;
+  };
   /** Opaque token for resolving an alternate source after this source fails. */
   retryToken?: string;
   /** Optional deadline for one byte-load attempt; adapters choose the policy. */
