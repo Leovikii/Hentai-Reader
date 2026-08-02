@@ -4,8 +4,10 @@ import { createStatusHUD } from './status-hud';
 import { createSidebar } from './thumbnail-panel';
 import type { ReaderDriver } from '../contracts';
 import type { ThumbnailController } from '../controllers/thumbnail-controller';
+import type { ReaderInputCapabilities } from '../../utils/input-capabilities';
 
 export interface ReaderShellOptions {
+  inputCapabilities: ReaderInputCapabilities;
   onIndexChange: (index: number) => void;
   onScrollToBottom: () => void;
   onScrollToTop: () => void;
@@ -51,6 +53,7 @@ export function createReaderShell(options: ReaderShellOptions): ReaderShell {
       getDisplayNumber: options.getDisplayNumber,
       getThumbnailPosition: options.getThumbnailPosition,
       subscribeSettingsChanged: options.subscribeSettingsChanged,
+      inputCapabilities: options.inputCapabilities,
     },
   );
 
@@ -67,7 +70,7 @@ export function createReaderShell(options: ReaderShellOptions): ReaderShell {
       sidebarElements.forEach(element => {
         element.classList.toggle('sp-hidden-by-pswp', !isVisible);
       });
-      if (window.matchMedia('(hover: none)').matches) {
+      if (options.inputCapabilities.touchOnlyUi) {
         if (isVisible) sidebar.openPanel(false);
         else sidebar.closePanel();
       }

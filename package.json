@@ -12,7 +12,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/architecture-boundaries.test.ts tests/4khd-adapter.test.ts tests/18comic-materializer.test.ts tests/e-hentai-adapter.test.ts tests/e-hentai-node-retry.test.ts tests/gallery-page-loader.test.ts tests/thumbnail-service.test.ts tests/thumbnail-controller.test.ts tests/image-load-service.test.ts tests/image-task-scheduler.test.ts tests/interaction-settle-scheduler.test.ts tests/materialize-scheduler.test.ts tests/net-limiter.test.ts tests/photoswipe-holder.test.ts tests/prefetch-policy.test.ts tests/site-template.test.ts tests/spread-layout.test.ts tests/wheel-pager.test.ts",
+    "test": "node --test tests/architecture-boundaries.test.ts tests/input-capabilities.test.ts tests/4khd-adapter.test.ts tests/18comic-materializer.test.ts tests/e-hentai-adapter.test.ts tests/e-hentai-node-retry.test.ts tests/gallery-page-loader.test.ts tests/thumbnail-service.test.ts tests/thumbnail-controller.test.ts tests/image-load-service.test.ts tests/image-task-scheduler.test.ts tests/interaction-settle-scheduler.test.ts tests/materialize-scheduler.test.ts tests/net-limiter.test.ts tests/photoswipe-holder.test.ts tests/prefetch-policy.test.ts tests/site-template.test.ts tests/spread-layout.test.ts tests/wheel-pager.test.ts",
     "check": "npm run typecheck && npm test && npm run build"
   },
   "devDependencies": {

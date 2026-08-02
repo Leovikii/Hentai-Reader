@@ -21,7 +21,12 @@ export function createSidebar(
   const panel = createThumbnailPanel(onIndexChange, onScrollToBottom, onScrollToTop, options);
   const progress = createProgressTrack(onIndexChange, panel.isActive, options);
   
-  createMouseTracker(panel, progress, options.getThumbnailPosition);
+  createMouseTracker(
+    panel,
+    progress,
+    options.getThumbnailPosition,
+    options.inputCapabilities.touchOnlyUi,
+  );
 
   function update() {
     panel.update();

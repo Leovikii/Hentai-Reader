@@ -1,7 +1,7 @@
 # 当前架构与兼容性基线
 
-状态：v3.3.0 已实现架构基线；Chrome 的 E-Hentai 动图库基线与 EhSyringe 共存回归已通过，
-发布等待 Firefox 与真实触控的最终人工确认。
+状态：v3.3.0 架构与兼容性基线已完成；Chrome、Firefox + Violentmonkey、EhSyringe 共存、
+桌面、移动端和三个现有站点的功能回归均已通过，进入发布收尾。
 
 ## 总体原则
 
@@ -98,6 +98,9 @@ viewer URL
   若先丢失旧 Slide 引用，Driver 必须在新内容挂载完成时销毁仍连接的旧 Slide，并清除无法
   追踪的孤儿 wrapper；缓存失效不得只销毁 Content 而遗留 Slide 容器。
 - 桌面滚轮、键盘、点击区、移动滑动、双指缩放、垂直关闭和 UI 区域事件屏蔽是兼容红线。
+  Reader Controller、Shell 和缩略图只能共享同一份输入能力快照，不得分别用 Touch Events、
+  `maxTouchPoints` 或单一 `hover: none` 推断交互模式。存在可悬浮精细指针时采用桌面 UI；只有
+  不存在该指针且存在粗指针时才启用触摸端自动隐藏与 tap 唤醒。
 - 双页成员的加载状态不得阻塞滚轮、键盘、点击或滑动导航；未就绪成员由稳定槽内加载动画和
   聚合 HUD 反馈。单页加载边界仍采用落页后结束本次滚轮手势的旧语义。
 - 自定义 Spread 的 mouse 点击分类只允许由 PhotoSwipe Driver 补偿；隐藏 UI 的 Spread、
@@ -204,5 +207,6 @@ git diff --check
 架构测试持续禁止 Reader 反向依赖、站点写 Store、core 跨层依赖、旧路径复活和 PhotoSwipe
 内部访问扩散。涉及真实网络、浏览器布局、内存或手势的改动还必须完成 Chrome DevTools 与
 真实站点验证；桌面设备模拟不能替代移动端手势人工验收。v3.3.0 的常规 E-Hentai、18comic、
-4KHD 和既有移动端真实交互回归已通过；动图库在 Chrome 基线、EhSyringe 共存及 375×829
-移动视口压力回归通过，仍需 Firefox 与最新候选的真实触控最终确认。
+4KHD 和既有移动端真实交互回归已通过；动图库在 Chrome、Firefox + Violentmonkey、EhSyringe
+共存及 375×829 移动视口压力回归通过。输入能力分类改动必须继续覆盖普通桌面、混合指针设备和
+纯触摸设备。

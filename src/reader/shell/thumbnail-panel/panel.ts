@@ -2,6 +2,7 @@ import type { GalleryItem } from '../../../core/gallery';
 import type { LoadedImage } from '../../../core/image';
 import { createThumbnailPlan } from '../../../services/thumbnail-service';
 import type { ThumbnailPreloadPhase } from '../../controllers/thumbnail-controller';
+import type { ReaderInputCapabilities } from '../../../utils/input-capabilities';
 
 
 const VISIBLE_COUNT = 15;
@@ -9,6 +10,7 @@ const BUFFER = 3;
 const PRELOAD_SETTLE_MS = 300;
 
 export interface ThumbnailPanelOptions {
+  inputCapabilities: ReaderInputCapabilities;
   onMobileInteractionStart?: () => void;
   onMobileInteractionEnd?: () => void;
   subscribeThumbnailChange?: (listener: (index: number) => void) => () => void;
@@ -59,6 +61,7 @@ export function createThumbnailPanel(
   let isPanelActive = false;
   let preloadTimer: ReturnType<typeof setTimeout> | null = null;
   let userScrollArmed = false;
+  const touchOnlyUi = options.inputCapabilities.touchOnlyUi;
 
   function openPanel(keepOpen = false): void {
     if (options.getImageCount() === 0) return;
@@ -66,14 +69,12 @@ export function createThumbnailPanel(
     isPanelActive = true;
     thumbPanel.classList.add('active');
     
-    const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-    
     if (keepOpen) {
-      if (isTouchDevice) {
+      if (touchOnlyUi) {
         options.onMobileInteractionStart?.();
       }
     } else {
-      if (isTouchDevice) {
+      if (touchOnlyUi) {
         options.onMobileInteractionEnd?.();
       } else {
         hideTimeout = setTimeout(() => {

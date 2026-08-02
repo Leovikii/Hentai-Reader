@@ -33,6 +33,7 @@ import {
   type SpreadPage,
 } from './controllers/spread-layout';
 import { createInteractionSettleScheduler } from './controllers/interaction-settle-scheduler';
+import { getReaderInputCapabilities } from '../utils/input-capabilities';
 
 export interface ReaderControllerDeps {
   pageLoader: GalleryPageLoader;
@@ -47,6 +48,7 @@ export interface ReaderControllerDeps {
 const RETURN_GEOMETRY_RADIUS = 5;
 
 export function createReaderController(deps: ReaderControllerDeps): ReaderHandle {
+  const inputCapabilities = getReaderInputCapabilities();
   let pswp: ReaderDriver | null = null;
   let isActive = false;
   let isReinitializing = false;
@@ -151,6 +153,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
   const autoPlay = createAutoPlay(() => pswp?.next(), deps.context);
   let pagination: ReaderPaginationController;
   const shell = createReaderShell({
+    inputCapabilities,
     onIndexChange: index => {
       session.setCurrentIndex(index);
       spreadLayout = spreadLayout.withPrimaryLogical(index);
@@ -288,10 +291,10 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
 
   function initPhotoSwipe(startSpreadIndex: number) {
     let mobileUiTimeout: ReturnType<typeof setTimeout>;
-    const hasTouchInput = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    const touchOnlyUi = inputCapabilities.touchOnlyUi;
     function triggerMobileUITimeout() {
       clearTimeout(mobileUiTimeout);
-      if (!hasTouchInput) return;
+      if (!touchOnlyUi) return;
       mobileUiTimeout = setTimeout(() => {
         pswp?.hideUi();
       }, 2000);
@@ -306,7 +309,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
       // On touch devices the status HUD is independent from PhotoSwipe's
       // controls. Loading updates must not reveal or keep the controls and
       // thumbnail panel awake; only an explicit tap does that.
-      if (hasTouchInput) return;
+      if (touchOnlyUi) return;
       if (!pswp.isCurrentContentLoaded()) {
         cancelMobileUITimeout();
         pswp.showUi();

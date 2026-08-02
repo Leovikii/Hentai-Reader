@@ -67,6 +67,19 @@ test('public image contracts use generic retry terminology', async () => {
   assert.equal(/\bnl(?:Token)?\b/.test(contracts.join('\n')), false);
 });
 
+test('reader UI shares one capability classifier instead of inferring touch independently', async () => {
+  const readerSource = await readFile(path.join(srcRoot, 'reader/reader-controller.ts'), 'utf8');
+  const shellSources = await Promise.all(
+    (await sourceFiles(path.join(srcRoot, 'reader/shell'))).map(file => readFile(file, 'utf8')),
+  );
+  const combined = [readerSource, ...shellSources].join('\n');
+  assert.doesNotMatch(combined, /['"]ontouchstart['"]\s+in\s+window/);
+  assert.doesNotMatch(combined, /navigator\.maxTouchPoints/);
+  assert.doesNotMatch(combined, /matchMedia\(['"]\(hover:\s*none\)['"]\)/);
+  assert.match(readerSource, /getReaderInputCapabilities\(\)/);
+  assert.match(readerSource, /inputCapabilities,/);
+});
+
 test('E-Hentai source URL syntax stays inside its site adapter', async () => {
   const files = await sourceFiles(srcRoot);
   for (const file of files) {
@@ -172,7 +185,7 @@ test('reader remapping always releases its guard and keeps HUD state image-aware
   const syncUi = source.match(/function syncUiAvailabilityForCurrent\(\): void \{([\s\S]*?)\n    \}/)?.[1] ?? '';
   assert.doesNotMatch(mobileTimeout, /isCurrentContentLoaded/);
   assert.match(mobileTimeout, /pswp\?\.hideUi\(\)/);
-  assert.match(syncUi, /if \(hasTouchInput\) return;/);
+  assert.match(syncUi, /if \(touchOnlyUi\) return;/);
   assert.match(syncUi, /if \(!pswp\.isCurrentContentLoaded\(\)\)[\s\S]*?pswp\.showUi\(\)/);
   assert.match(hud, /renderedKey !== nextKey/);
   const hudVisibleRule = css.match(/\.sp-hud-container\.show \{([\s\S]*?)\n\}/)?.[1] ?? '';
