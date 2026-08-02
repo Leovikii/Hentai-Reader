@@ -1,18 +1,24 @@
 import PhotoSwipe from 'photoswipe';
 import type { ReaderDriver, ReaderDriverOptions, ScreenPoint } from '../contracts';
 import {
+  getSpreadImageRenderState,
   getPhotoSwipeHolderPosition,
   getSpreadMouseClickAction,
   reconcilePhotoSwipeHolder,
   shouldRetainMountedSpreadImage,
   shouldHandleSpreadMouseClick,
+  shouldRetrySpreadImage,
 } from './photoswipe-holder';
 
 class PhotoSwipeDriver implements ReaderDriver {
   private readonly instance: PhotoSwipe;
   private readonly slidesByHolder = new WeakMap<HTMLElement, any>();
+  private readonly renderedImageBindings = new WeakMap<HTMLImageElement, string>();
+  private readonly renderedImageRetryAttempts = new Map<string, number>();
+  private readonly renderedImageRetryPending = new Set<string>();
+  private readonly renderedImageRetryTimers = new Set<ReturnType<typeof setTimeout>>();
 
-  constructor(options: ReaderDriverOptions) {
+  constructor(private readonly options: ReaderDriverOptions) {
     this.instance = new PhotoSwipe({
       index: options.startIndex,
       counter: false,
@@ -49,15 +55,16 @@ class PhotoSwipeDriver implements ReaderDriver {
     // Reader spreads remain opaque to PhotoSwipe outside this driver. Convert
     // the Reader-owned description into HTML content only at the integration
     // boundary, so two independently cached images share one zoom wrapper.
-    this.instance.addFilter('itemData', (itemData: any) => {
+    this.instance.addFilter('itemData', (itemData: any, index: number) => {
       if (!Array.isArray(itemData.hrSpread)) return itemData;
       const escape = (value: string) => value
         .replace(/&/g, '&amp;')
         .replace(/"/g, '&quot;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
+      const fetchPriority = index === this.instance.currIndex ? 'high' : 'low';
       const images = itemData.hrSpread.map((page: any) => page.src
-        ? `<img class="hr-reader-spread__page" data-logical-index="${Number(page.index)}" src="${escape(page.src)}" alt="${escape(page.alt || '')}" decoding="async" fetchpriority="high">`
+        ? `<img class="hr-reader-spread__page" data-logical-index="${Number(page.index)}" src="${escape(page.src)}" alt="${escape(page.alt || '')}" decoding="async" fetchpriority="${fetchPriority}">`
         : `<span class="hr-reader-spread__page hr-reader-spread__page--pending" data-logical-index="${Number(page.index)}" aria-hidden="true"></span>`
       ).join('');
       return {
@@ -74,6 +81,7 @@ class PhotoSwipeDriver implements ReaderDriver {
       if (!holderElement) return;
       reconcilePhotoSwipeHolder(holderElement, slide, this.slidesByHolder.get(holderElement));
       this.slidesByHolder.set(holderElement, slide);
+      this.bindSpreadImages(slide);
     });
     this.instance.on('bindEvents', () => {
       const root = this.instance.element;
@@ -120,7 +128,12 @@ class PhotoSwipeDriver implements ReaderDriver {
     this.instance.init();
     this.instance.element?.setAttribute('aria-label', 'Image reader');
   }
-  destroy(): void { this.instance.destroy(); }
+  destroy(): void {
+    this.renderedImageRetryTimers.forEach(timer => clearTimeout(timer));
+    this.renderedImageRetryTimers.clear();
+    this.renderedImageRetryPending.clear();
+    this.instance.destroy();
+  }
   next(): void { this.instance.next(); }
   prev(): void { this.instance.prev(); }
   goTo(index: number): void { this.instance.goTo(index); }
@@ -202,10 +215,18 @@ class PhotoSwipeDriver implements ReaderDriver {
 
   isInteracting(): boolean {
     const instance = this.instance as any;
+    const activeAnimations: any[] = instance.animations?.activeAnimations ?? [];
+    // Only holder-moving animations make an in-place spread patch unsafe.
+    // Counting every PhotoSwipe animation can leave Reader refreshes blocked by
+    // an unrelated/opening CSS transition that a host script has disturbed.
     return !!instance.gestures?.isDragging
       || !!instance.gestures?.isZooming
       || !!instance.mainScroll?.isShifted?.()
-      || (instance.animations?.activeAnimations?.length ?? 0) > 0;
+      || !!instance.opener?.isOpening
+      || !!instance.opener?.isClosing
+      || activeAnimations.some(animation => (
+        !!animation?.props?.isMainScroll || !!animation?.props?.isPan
+      ));
   }
 
   stopMotion(): void {
@@ -242,7 +263,8 @@ class PhotoSwipeDriver implements ReaderDriver {
       });
       return content.data.hrSpread.every((page: any) => {
         const image = images.get(Number(page.index));
-        return !!image?.getAttribute('src');
+        return !!image?.getAttribute('src')
+          && getSpreadImageRenderState(image) === 'loaded';
       });
     }
     return content?.state === 'loaded';
@@ -375,12 +397,7 @@ class PhotoSwipeDriver implements ReaderDriver {
         const image = current?.tagName === 'IMG'
           ? current as HTMLImageElement
           : document.createElement('img');
-        image.className = 'hr-reader-spread__page';
-        image.dataset.logicalIndex = String(logicalIndex);
-        image.alt = page.alt || '';
-        image.decoding = 'async';
-        image.fetchPriority = 'high';
-        if (image.src !== page.src) image.src = page.src;
+        this.configureSpreadImage(image, page, slide);
         next = image;
       } else if (shouldRetainMountedSpreadImage(
         current?.tagName,
@@ -415,6 +432,91 @@ class PhotoSwipeDriver implements ReaderDriver {
     slide.zoomLevels.itemData = itemData;
     slide.resize();
     return true;
+  }
+
+  private bindSpreadImages(slide: any): void {
+    const pages = slide?.content?.data?.hrSpread;
+    const root = slide?.content?.element?.querySelector?.('[data-reader-spread]') as HTMLElement | null;
+    if (!Array.isArray(pages) || !root) return;
+    const byIndex = new Map<number, HTMLImageElement>();
+    root.querySelectorAll<HTMLImageElement>('img.hr-reader-spread__page').forEach(image => {
+      byIndex.set(Number(image.dataset.logicalIndex), image);
+    });
+    for (const page of pages) {
+      const image = byIndex.get(Number(page.index));
+      if (image && page.src) this.configureSpreadImage(image, page, slide);
+    }
+  }
+
+  private configureSpreadImage(image: HTMLImageElement, page: any, slide: any): void {
+    const logicalIndex = Number(page.index);
+    const src = String(page.src || '');
+    const bindingKey = `${logicalIndex}\u0000${src}`;
+    image.className = 'hr-reader-spread__page';
+    image.dataset.logicalIndex = String(logicalIndex);
+    image.alt = page.alt || '';
+    image.decoding = 'async';
+    image.fetchPriority = slide.index === this.instance.currIndex ? 'high' : 'low';
+
+    if (this.renderedImageBindings.get(image) !== bindingKey) {
+      this.renderedImageBindings.set(image, bindingKey);
+      image.onload = () => {
+        if (this.renderedImageBindings.get(image) !== bindingKey) return;
+        this.publishRenderedImageState(logicalIndex, 'loaded');
+      };
+      image.onerror = () => {
+        if (this.renderedImageBindings.get(image) !== bindingKey) return;
+        this.handleSpreadImageError(image, page, slide, bindingKey);
+      };
+    }
+
+    if (image.getAttribute('src') !== src) {
+      this.publishRenderedImageState(logicalIndex, 'loading');
+      image.src = src;
+      return;
+    }
+
+    const state = getSpreadImageRenderState(image);
+    if (state === 'error') this.handleSpreadImageError(image, page, slide, bindingKey);
+    else this.publishRenderedImageState(logicalIndex, state);
+  }
+
+  private handleSpreadImageError(
+    image: HTMLImageElement,
+    page: any,
+    slide: any,
+    bindingKey: string,
+  ): void {
+    const logicalIndex = Number(page.index);
+    const attempts = this.renderedImageRetryAttempts.get(bindingKey) ?? 0;
+    if (this.renderedImageRetryPending.has(bindingKey)) {
+      this.publishRenderedImageState(logicalIndex, 'loading');
+      return;
+    }
+    if (!shouldRetrySpreadImage(attempts, slide.index === this.instance.currIndex)) {
+      this.publishRenderedImageState(logicalIndex, 'error');
+      return;
+    }
+
+    this.renderedImageRetryAttempts.set(bindingKey, attempts + 1);
+    this.renderedImageRetryPending.add(bindingKey);
+    this.publishRenderedImageState(logicalIndex, 'loading');
+    const timer = setTimeout(() => {
+      this.renderedImageRetryTimers.delete(timer);
+      this.renderedImageRetryPending.delete(bindingKey);
+      if (!image.isConnected || this.renderedImageBindings.get(image) !== bindingKey) return;
+      const replacement = document.createElement('img');
+      image.replaceWith(replacement);
+      this.configureSpreadImage(replacement, page, slide);
+    }, 300);
+    this.renderedImageRetryTimers.add(timer);
+  }
+
+  private publishRenderedImageState(
+    logicalIndex: number,
+    state: 'loading' | 'loaded' | 'error',
+  ): void {
+    this.options.onRenderedImageStateChange({ logicalIndex, state });
   }
 }
 

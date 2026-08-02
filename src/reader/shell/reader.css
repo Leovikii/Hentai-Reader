@@ -468,7 +468,6 @@
 
 .sp-hud-container.show {
   opacity: 1;
-  pointer-events: auto;
   transform: translate(-50%, 0) scale(var(--hr-scale, 1));
 }
 

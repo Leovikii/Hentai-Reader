@@ -8,6 +8,10 @@ export interface ReaderDriverOptions {
   onBackgroundClick: (point: ScreenPoint) => void;
   onImageClick: (point: ScreenPoint) => void;
   onTap: (point: ScreenPoint) => void;
+  onRenderedImageStateChange: (event: {
+    logicalIndex: number;
+    state: 'loading' | 'loaded' | 'error';
+  }) => void;
 }
 
 /** Reader-facing navigation and input surface, independent of PhotoSwipe. */

@@ -4,6 +4,20 @@ interface PhotoSwipeSlideLike {
 }
 
 export type SpreadMouseClickAction = 'image' | 'background' | null;
+export type SpreadImageRenderState = 'loading' | 'loaded' | 'error';
+
+export function getSpreadImageRenderState(image: {
+  complete: boolean;
+  naturalWidth: number;
+  naturalHeight: number;
+}): SpreadImageRenderState {
+  if (!image.complete) return 'loading';
+  return image.naturalWidth > 0 && image.naturalHeight > 0 ? 'loaded' : 'error';
+}
+
+export function shouldRetrySpreadImage(attempts: number, isCurrent: boolean): boolean {
+  return isCurrent && attempts < 1;
+}
 
 /**
  * PhotoSwipe keeps the previous/current/next slides in holder positions 0/1/2.

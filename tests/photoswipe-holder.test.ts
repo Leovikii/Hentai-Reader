@@ -1,12 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  getSpreadImageRenderState,
   getPhotoSwipeHolderPosition,
   getSpreadMouseClickAction,
   reconcilePhotoSwipeHolder,
   shouldRetainMountedSpreadImage,
   shouldHandleSpreadMouseClick,
+  shouldRetrySpreadImage,
 } from '../src/reader/drivers/photoswipe-holder.ts';
+
+test('distinguishes pending, decoded, and failed spread image elements', () => {
+  assert.equal(getSpreadImageRenderState({ complete: false, naturalWidth: 0, naturalHeight: 0 }), 'loading');
+  assert.equal(getSpreadImageRenderState({ complete: true, naturalWidth: 1472, naturalHeight: 2048 }), 'loaded');
+  assert.equal(getSpreadImageRenderState({ complete: true, naturalWidth: 0, naturalHeight: 0 }), 'error');
+});
+
+test('allows only one presentation retry and only for the current spread', () => {
+  assert.equal(shouldRetrySpreadImage(0, true), true);
+  assert.equal(shouldRetrySpreadImage(1, true), false);
+  assert.equal(shouldRetrySpreadImage(0, false), false);
+});
 
 test('maps only previous/current/next indices to stable holder positions', () => {
   assert.equal(getPhotoSwipeHolderPosition(4, 3, 3), 0);

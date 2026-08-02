@@ -32,6 +32,7 @@ import {
   type SpreadLayout,
   type SpreadPage,
 } from './controllers/spread-layout';
+import { createInteractionSettleScheduler } from './controllers/interaction-settle-scheduler';
 
 export interface ReaderControllerDeps {
   pageLoader: GalleryPageLoader;
@@ -60,6 +61,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
   let refreshActiveLayout = () => {};
   let refreshActiveHud = () => {};
   const failedLogicalIndices = new Set<number>();
+  const renderedFailedLogicalIndices = new Set<number>();
 
   function startReinitializing(): void {
     reinitializationDepth++;
@@ -343,6 +345,16 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
       onBackgroundClick: point => handleScreenClick(point, 'toggle'),
       onImageClick: point => handleScreenClick(point, 'zoom'),
       onTap: point => handleScreenClick(point, 'toggle'),
+      onRenderedImageStateChange: ({ logicalIndex, state }) => {
+        if (state === 'error') renderedFailedLogicalIndices.add(logicalIndex);
+        else renderedFailedLogicalIndices.delete(logicalIndex);
+        if (!activeLogicalIndices().includes(logicalIndex)) return;
+        refreshHudForCurrent();
+        syncUiAvailabilityForCurrent();
+        if (state === 'loaded'
+            && deps.context.isAutoPlayEnabled()
+            && pswp?.isCurrentContentLoaded()) autoPlay.start();
+      },
     });
 
     // PhotoSwipe's vertical-drag-to-close only fires when currZoomLevel <= fit.
@@ -361,7 +373,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     const unsubscribeImageLoaded = deps.scroll.subscribeImageLoaded(({ index, element }) => {
       session.replaceImage(index, element);
       if (pswp && index >= 0 && index < session.imageCount) {
-        refreshSpreadLayout(session.currentIndex, index, true);
+        refreshSpreadLayout(session.currentIndex, index);
       }
     });
     pswp.on('destroy', () => {
@@ -394,12 +406,12 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
         // A resolver may publish reliable source dimensions before byte load
         // completes (E-Hentai hath metadata). Re-evaluate the stable pair while
         // keeping the pending slot and the already visible member in place.
-        if (phase === 'downloading') refreshSpreadLayout(session.currentIndex, index, true);
+        if (phase === 'downloading') refreshSpreadLayout(session.currentIndex, index);
         if (isActiveIndex) refreshHudForCurrent();
       },
       onAssetReady: index => {
         const isActiveIndex = activeLogicalIndices().includes(index);
-        refreshSpreadLayout(session.currentIndex, index, true);
+        refreshSpreadLayout(session.currentIndex, index);
         refreshHudForCurrent();
         if (isActiveIndex) syncUiAvailabilityForCurrent();
         if (isActiveIndex
@@ -409,47 +421,42 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     });
 
     let resizeRaf = 0;
-    let deferredLayoutRaf = 0;
-    let hudRefreshRaf = 0;
-    let layoutDeferredDuringInteraction = false;
+    let pendingLayoutRequest = {
+      preferredLogicalIndex: session.currentIndex,
+      refreshLogicalIndex: session.currentIndex,
+    };
+
+    const layoutSettleScheduler = createInteractionSettleScheduler({
+      isBlocked: () => pswp?.isInteracting() ?? false,
+      onBlocked: () => {
+        // Transition feedback is independent from structural refresh. Render it
+        // once; the status HUD itself deduplicates equivalent updates.
+        showImagePhase('downloading');
+      },
+      onSettled: applyPendingSpreadLayout,
+    });
+
     function refreshSpreadLayout(
       preferredLogicalIndex = session.currentIndex,
       refreshLogicalIndex = preferredLogicalIndex,
-      requireIdleFrames = false,
-      idleFrames = 0,
     ): void {
       if (!pswp) return;
+      pendingLayoutRequest = {
+        preferredLogicalIndex,
+        refreshLogicalIndex,
+      };
+      layoutSettleScheduler.request();
+    }
+
+    function applyPendingSpreadLayout(): void {
+      if (!pswp) return;
+      const {
+        preferredLogicalIndex,
+        refreshLogicalIndex,
+      } = pendingLayoutRequest;
       const previousKeys = spreadLayout.spreads.map(spread => spread.key).join('|');
       const next = calculateSpreadLayout(preferredLogicalIndex);
       const nextKeys = next.spreads.map(spread => spread.key).join('|');
-      const deferRefresh = (nextIdleFrames: number) => {
-        cancelAnimationFrame(deferredLayoutRaf);
-        deferredLayoutRaf = requestAnimationFrame(() => {
-          deferredLayoutRaf = 0;
-          refreshSpreadLayout(
-            preferredLogicalIndex,
-            refreshLogicalIndex,
-            requireIdleFrames,
-            nextIdleFrames,
-          );
-        });
-      };
-      // Source arrival can otherwise rebuild a current/neighbor Slide while a
-      // keyboard, wheel, click or swipe transition is still moving its holder.
-      if (pswp.isInteracting()) {
-        layoutDeferredDuringInteraction = true;
-        deferRefresh(0);
-        return;
-      }
-      if (requireIdleFrames || previousKeys !== nextKeys || layoutDeferredDuringInteraction) {
-        // External source/change callbacks always start at zero; repeated
-        // completions therefore restart (rather than advance) the settle gate.
-        if (idleFrames < 2) {
-          deferRefresh(idleFrames + 1);
-          return;
-        }
-      }
-      layoutDeferredDuringInteraction = false;
       spreadLayout = next;
       const targetSpread = spreadLayout.spreadIndexForLogical(preferredLogicalIndex);
       if (targetSpread < 0) return;
@@ -499,16 +506,12 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
 
     function refreshHudForCurrent(): void {
       if (!pswp) return;
-      cancelAnimationFrame(hudRefreshRaf);
-      hudRefreshRaf = 0;
-      // Keep transition feedback visible until PhotoSwipe has mounted and
-      // settled the destination holder, even when its bytes were cached.
-      if (pswp.isInteracting()) {
-        showImagePhase('downloading');
-        hudRefreshRaf = requestAnimationFrame(refreshHudForCurrent);
+      const activeIndices = activeLogicalIndices();
+      if (activeIndices.some(index => renderedFailedLogicalIndices.has(index))) {
+        showImagePhase('error');
         return;
       }
-      const phases = activeLogicalIndices().map(index => imageController.getPhase(index));
+      const phases = activeIndices.map(index => imageController.getPhase(index));
       const phase = phases.includes('error')
         ? 'error'
         : phases.includes('resolving')
@@ -526,8 +529,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
 
     pswp.on('destroy', () => {
       cancelAnimationFrame(resizeRaf);
-      cancelAnimationFrame(deferredLayoutRaf);
-      cancelAnimationFrame(hudRefreshRaf);
+      layoutSettleScheduler.cancel();
       window.removeEventListener('resize', onResize);
       refreshActiveLayout = () => {};
       refreshActiveHud = () => {};
@@ -615,7 +617,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
         // A destination may have been cached as a pending or empty Content.
         // Once the transition settles, reconcile the exact current holder even
         // when no new network completion event fires.
-        refreshSpreadLayout(session.currentIndex, session.currentIndex, true);
+        refreshSpreadLayout(session.currentIndex, session.currentIndex);
 
         // Byte-prefetch a small window in the travel direction (and release
         // downloads left behind, including everything skipped by a panel jump).
@@ -653,6 +655,11 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
 
     pswp.on('close', () => {
       close();
+    });
+    pswp.on('pointerUp', () => {
+      // Pointer release may end a drag without changing pages. If a source
+      // completed during that gesture, resume its coalesced holder refresh.
+      refreshSpreadLayout(session.currentIndex, session.currentIndex);
     });
 
     pswp.init();

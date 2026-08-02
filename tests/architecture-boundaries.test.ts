@@ -109,25 +109,41 @@ test('PhotoSwipe package and internal fields stay behind the driver', async () =
 test('dynamic spread changes keep the live Reader driver instead of rebuilding it', async () => {
   const source = await readFile(path.join(srcRoot, 'reader/reader-controller.ts'), 'utf8');
   const driver = await readFile(path.join(srcRoot, 'reader/drivers/photoswipe-driver.ts'), 'utf8');
+  const settleScheduler = await readFile(
+    path.join(srcRoot, 'reader/controllers/interaction-settle-scheduler.ts'),
+    'utf8',
+  );
   const refreshFunction = source.match(/function refreshSpreadLayout\([\s\S]*?\n    const onResize/)?.[0] ?? '';
   const syncLayout = driver.match(/syncLayout\(index: number\): void \{([\s\S]*?)\n  \}/)?.[1] ?? '';
-  assert.match(source, /idleFrames < 2/);
-  assert.match(source, /deferRefresh\(idleFrames \+ 1\)/);
-  assert.match(source, /pswp\.isInteracting\(\)/);
-  assert.match(refreshFunction, /if \(pswp\.isInteracting\(\)\) \{[\s\S]*?layoutDeferredDuringInteraction = true;[\s\S]*?deferRefresh\(0\)/);
-  assert.match(refreshFunction, /requireIdleFrames \|\| previousKeys !== nextKeys \|\| layoutDeferredDuringInteraction/);
+  assert.match(source, /createInteractionSettleScheduler\(\{/);
+  assert.match(source, /isBlocked: \(\) => pswp\?\.isInteracting\(\) \?\? false/);
+  assert.match(source, /onSettled: applyPendingSpreadLayout/);
+  assert.match(refreshFunction, /layoutSettleScheduler\.request\(\)/);
+  assert.doesNotMatch(refreshFunction, /requestAnimationFrame/);
+  assert.match(settleScheduler, /requiredIdleFrames = options\.requiredIdleFrames \?\? 2/);
+  assert.match(settleScheduler, /maxBlockedChecks/);
+  assert.match(settleScheduler, /scheduleDelayedFrame/);
   assert.match(refreshFunction, /pswp\.syncLayout\(targetSpread\)/);
   assert.doesNotMatch(refreshFunction, /destroy\(|initPhotoSwipe\(/);
+  assert.doesNotMatch(source, /requestAnimationFrame\(refreshHudForCurrent\)/);
   assert.doesNotMatch(syncLayout, /stopAll|mainScroll\?\.stop/);
   assert.match(driver, /instance\.on\('afterSetContent'/);
   assert.match(driver, /reconcilePhotoSwipeHolder/);
+  assert.match(driver, /activeAnimations\.some\(animation/);
+  assert.match(driver, /animation\?\.props\?\.isMainScroll/);
+  assert.doesNotMatch(driver, /activeAnimations\?\.length/);
   assert.doesNotMatch(driver, /refreshSlideContent\(/);
   assert.match(driver, /getPhotoSwipeHolderPosition/);
   assert.match(syncLayout, /staleSlide\.destroy\(\)/);
+  assert.match(driver, /getSpreadImageRenderState\(image\) === 'loaded'/);
+  assert.match(driver, /shouldRetrySpreadImage\(attempts, slide\.index === this\.instance\.currIndex\)/);
+  assert.match(driver, /onRenderedImageStateChange/);
 });
 
 test('reader remapping always releases its guard and keeps HUD state image-aware', async () => {
   const source = await readFile(path.join(srcRoot, 'reader/reader-controller.ts'), 'utf8');
+  const hud = await readFile(path.join(srcRoot, 'reader/shell/status-hud.ts'), 'utf8');
+  const css = await readFile(path.join(srcRoot, 'reader/shell/reader.css'), 'utf8');
   const afterPrepend = source.match(/afterPrepend: itemCount => \{([\s\S]*?)\n    \},/)?.[1] ?? '';
   const onPageAdded = source.match(/onPageAdded: direction => \{([\s\S]*?)\n    \},/)?.[1] ?? '';
   const syncImages = source.match(/function syncImages\(\): void \{([\s\S]*?)\n  \}/)?.[1] ?? '';
@@ -148,8 +164,9 @@ test('reader remapping always releases its guard and keeps HUD state image-aware
   assert.match(source, /if \(isActiveIndex\) refreshHudForCurrent\(\)/);
   assert.match(source, /if \(isActiveIndex\) syncUiAvailabilityForCurrent\(\)/);
   assert.doesNotMatch(source, /refreshSlide:\s*index/);
-  assert.match(source, /refreshSpreadLayout\(session\.currentIndex, index, true\)/);
+  assert.match(source, /refreshSpreadLayout\(session\.currentIndex, index\)/);
   assert.match(source, /phase === 'loaded' && !pswp\.isCurrentContentLoaded\(\)/);
+  assert.match(source, /renderedFailedLogicalIndices/);
   assert.match(source, /pswp\.init\(\);\s*refreshHudForCurrent\(\)/);
   const mobileTimeout = source.match(/function triggerMobileUITimeout\(\) \{([\s\S]*?)\n    \}/)?.[1] ?? '';
   const syncUi = source.match(/function syncUiAvailabilityForCurrent\(\): void \{([\s\S]*?)\n    \}/)?.[1] ?? '';
@@ -157,6 +174,9 @@ test('reader remapping always releases its guard and keeps HUD state image-aware
   assert.match(mobileTimeout, /pswp\?\.hideUi\(\)/);
   assert.match(syncUi, /if \(hasTouchInput\) return;/);
   assert.match(syncUi, /if \(!pswp\.isCurrentContentLoaded\(\)\)[\s\S]*?pswp\.showUi\(\)/);
+  assert.match(hud, /renderedKey !== nextKey/);
+  const hudVisibleRule = css.match(/\.sp-hud-container\.show \{([\s\S]*?)\n\}/)?.[1] ?? '';
+  assert.doesNotMatch(hudVisibleRule, /pointer-events:\s*auto/);
   assert.doesNotMatch(closeHandler, /isReinitializing/);
   assert.match(source, /function close\(\): void \{\s*if \(!isActive\) return;/);
 });
