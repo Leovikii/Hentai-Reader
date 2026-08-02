@@ -58,7 +58,7 @@ export interface SiteAdapter extends GalleryAdapter {
 
   // UI helpers
   getContainer: () => HTMLElement | null; // Used for float control positioning
-  hideOriginalElements?: () => void;      // Hide original page elements for scroll mode
+  hideOriginalElements?: () => void | (() => void); // Optionally return initialization rollback
 
   // Optional lifecycle hook: when the single page mode is closed, useful for syncing pagination URL
   onReaderClose?: (globalIndex: number, context: SiteReaderCloseContext) => void;

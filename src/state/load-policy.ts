@@ -10,8 +10,8 @@ export const LOAD_PRIORITY = {
 } as const;
 
 export const READER_PREFETCH = {
-  ahead: 6,
-  behind: 3,
+  ahead: 5,
+  behind: 2,
 } as const satisfies ReaderPrefetchPolicy;
 
 /** Returns the bounded Reader window in nearest-first request order. */

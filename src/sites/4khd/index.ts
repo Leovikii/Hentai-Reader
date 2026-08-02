@@ -77,8 +77,11 @@ export const FourKHDAdapter: SiteAdapter = {
       '.centbtd', '.popup', '.wp-container-13', '.popup-iframe',
       '#basicExample', '.wp-block-image', '.page-link-box'
     ];
-    document.querySelectorAll<HTMLElement>(HIDDEN_SELECTORS.join(',')).forEach(el => {
+    const elements = Array.from(document.querySelectorAll<HTMLElement>(HIDDEN_SELECTORS.join(',')));
+    const displays = elements.map(element => element.style.display);
+    elements.forEach(el => {
       el.style.display = 'none';
     });
+    return () => elements.forEach((element, index) => { element.style.display = displays[index]; });
   }
 };

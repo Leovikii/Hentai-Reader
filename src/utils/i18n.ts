@@ -13,6 +13,7 @@ export const i18n = {
   scrollMode: isZH ? '卷轴模式' : 'Scroll Mode',
   autoEnter: isZH ? '自动进入阅读器' : 'Auto Enter Reader',
   clickToEnter: isZH ? '点击图片进入阅读器' : 'Click Image to Enter Reader',
+  doublePageMode: isZH ? '动态双页阅读' : 'Dynamic Two-page View',
   readerWidth: isZH ? '阅读器最大宽度' : 'Reader Max Width',
   playSpeed: isZH ? '自动翻页间隔 (秒)' : 'Auto Play Interval (s)',
   thumbnailPosition: isZH ? '缩略图位置' : 'Thumbnail Position',
@@ -23,11 +24,6 @@ export const i18n = {
   maxPreload: isZH ? '最大预加载数量' : 'Max Preload Count',
   close: isZH ? '关闭' : 'Close',
 
-  // Script Menu
-  toggle: isZH ? '切换: ' : 'Toggle: ',
-  enabled: isZH ? '已开启' : 'Enabled',
-  disabled: isZH ? '已关闭' : 'Disabled',
-
   // Overlay Network Status
   waitingForNetwork: isZH ? '等待网络请求...' : 'Waiting for network...',
   downloading: isZH ? '下载中...' : 'Downloading...',
@@ -37,4 +33,6 @@ export const i18n = {
   waitImagesToLoad: isZH ? '请等待图片加载' : 'Please wait for images to load',
   resolvingImage: isZH ? '解析图片真实地址中...' : 'Resolving Image URL...',
   resolveImageFailed: isZH ? '图片解析失败' : 'Image URL fetch failed',
+  paginationFailed: isZH ? '加载下一页失败' : 'Failed to load the next page',
+  retry: isZH ? '重试' : 'Retry',
 };

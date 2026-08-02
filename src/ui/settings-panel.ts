@@ -1,5 +1,6 @@
 import './settings-panel.css';
 import { store } from '../state/store';
+import type { UserSettings } from '../state/types';
 import { i18n } from '../utils/i18n';
 import { svgClose } from '../utils/icons';
 
@@ -12,32 +13,41 @@ export interface SettingsPanelHandle {
 
 interface SettingItem {
   label: string;
-  key: keyof Pick<typeof store.settings, 'scrollMode' | 'showControl' | 'autoEnterSinglePage' | 'clickToEnterReader'>;
+  key: keyof Pick<typeof store.settings, 'scrollMode' | 'autoEnterSinglePage' | 'clickToEnterReader' | 'doublePageMode'>;
 }
 
 const SETTINGS: SettingItem[] = [
   { label: i18n.scrollMode, key: 'scrollMode' },
   { label: i18n.autoEnter, key: 'autoEnterSinglePage' },
   { label: i18n.clickToEnter, key: 'clickToEnterReader' },
+  { label: i18n.doublePageMode, key: 'doublePageMode' },
 ];
 
 export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHandle {
   const backdrop = document.createElement('div');
   backdrop.className = 'settings-backdrop';
+  backdrop.setAttribute('aria-hidden', 'true');
+  backdrop.inert = true;
 
   const bottomSheet = document.createElement('div');
   bottomSheet.className = 'settings-bottom-sheet';
+  bottomSheet.setAttribute('role', 'dialog');
+  bottomSheet.setAttribute('aria-modal', 'true');
+  bottomSheet.setAttribute('aria-labelledby', 'hr-settings-title');
 
   // Header with title and close button
   const sheetHeader = document.createElement('div');
   sheetHeader.className = 'settings-sheet-header';
 
-  const title = document.createElement('div');
+  const title = document.createElement('h2');
   title.className = 'settings-title';
+  title.id = 'hr-settings-title';
   title.textContent = i18n.settings;
 
-  const closeBtn = document.createElement('div');
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
   closeBtn.className = 'settings-close-btn';
+  closeBtn.setAttribute('aria-label', i18n.close);
   closeBtn.innerHTML = svgClose.replace('class="pswp__icn"', '');
   closeBtn.onclick = (e) => {
     e.stopPropagation();
@@ -59,8 +69,12 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
     labelEl.className = 'settings-label';
     labelEl.textContent = label;
 
-    const toggle = document.createElement('div');
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
     toggle.className = `toggle-switch${store.settings[key] ? ' on' : ''}`;
+    toggle.setAttribute('role', 'switch');
+    toggle.setAttribute('aria-label', label);
+    toggle.setAttribute('aria-checked', String(store.settings[key]));
 
     const slider = document.createElement('div');
     slider.className = 'toggle-slider';
@@ -71,6 +85,7 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
       const newValue = !store.settings[key];
       store.updateSetting(key, newValue);
       toggle.classList.toggle('on', newValue);
+      toggle.setAttribute('aria-checked', String(newValue));
       if (key === 'scrollMode') {
         window.location.reload();
       }
@@ -85,19 +100,24 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
   const intervalItem = document.createElement('div');
   intervalItem.className = 'settings-item';
 
-  const intervalLabel = document.createElement('span');
+  const intervalLabel = document.createElement('label');
   intervalLabel.className = 'settings-label';
   intervalLabel.textContent = i18n.playSpeed;
 
   const intervalRight = document.createElement('div');
   intervalRight.className = 'stepper-control';
 
-  const minusBtn = document.createElement('div');
+  const minusBtn = document.createElement('button');
+  minusBtn.type = 'button';
   minusBtn.className = 'stepper-btn';
   minusBtn.textContent = '−';
+  minusBtn.setAttribute('aria-label', `${i18n.playSpeed}: -1`);
 
   const intervalInput = document.createElement('input');
   intervalInput.type = 'number';
+  intervalInput.id = 'hr-autoplay-interval';
+  intervalInput.name = 'hr-autoplay-interval';
+  intervalLabel.htmlFor = intervalInput.id;
   intervalInput.className = 'interval-input';
   intervalInput.min = '1';
   intervalInput.max = '60';
@@ -105,9 +125,11 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
   intervalInput.value = String(store.settings.autoPlayInterval / 1000);
   intervalInput.onclick = (e) => e.stopPropagation();
 
-  const plusBtn = document.createElement('div');
+  const plusBtn = document.createElement('button');
+  plusBtn.type = 'button';
   plusBtn.className = 'stepper-btn';
   plusBtn.textContent = '+';
+  plusBtn.setAttribute('aria-label', `${i18n.playSpeed}: +1`);
 
   const updateInterval = (val: number) => {
     if (!isNaN(val) && val >= 1 && val <= 60) {
@@ -124,14 +146,14 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
     e.stopPropagation();
     let current = parseFloat(intervalInput.value);
     if (isNaN(current)) current = 5;
-    updateInterval(Math.max(5, current - 5));
+    updateInterval(Math.max(1, current - 1));
   };
 
   plusBtn.onclick = (e) => {
     e.stopPropagation();
     let current = parseFloat(intervalInput.value);
     if (isNaN(current)) current = 5;
-    updateInterval(Math.min(60, current + 5));
+    updateInterval(Math.min(60, current + 1));
   };
 
   intervalRight.appendChild(minusBtn);
@@ -153,27 +175,36 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
   const segmentControl = document.createElement('div');
   segmentControl.className = 'segment-control';
 
-  const posOptions = [
+  const posOptions: Array<{
+    value: UserSettings['thumbnailPosition'];
+    label: string;
+  }> = [
     { value: 'top', label: i18n.posTop },
     { value: 'bottom', label: i18n.posBottom },
     { value: 'left', label: i18n.posLeft },
     { value: 'right', label: i18n.posRight },
   ];
 
-  const segmentItems: HTMLElement[] = [];
+  const segmentItems: HTMLButtonElement[] = [];
 
   posOptions.forEach(opt => {
-    const item = document.createElement('div');
+    const item = document.createElement('button');
+    item.type = 'button';
     item.className = `segment-item${store.settings.thumbnailPosition === opt.value ? ' active' : ''}`;
     item.textContent = opt.label;
+    item.setAttribute('aria-pressed', String(store.settings.thumbnailPosition === opt.value));
 
     item.onclick = (e) => {
       e.stopPropagation();
       if (store.settings.thumbnailPosition === opt.value) return;
 
-      store.updateSetting('thumbnailPosition', opt.value as any);
-      segmentItems.forEach(el => el.classList.remove('active'));
+      store.updateSetting('thumbnailPosition', opt.value);
+      segmentItems.forEach(el => {
+        el.classList.remove('active');
+        el.setAttribute('aria-pressed', 'false');
+      });
       item.classList.add('active');
+      item.setAttribute('aria-pressed', 'true');
     };
 
     segmentItems.push(item);
@@ -218,10 +249,16 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
     }
     
     backdrop.classList.add('show');
+    backdrop.inert = false;
+    backdrop.setAttribute('aria-hidden', 'false');
+    closeBtn.focus({ preventScroll: true });
   };
 
   const hide = () => {
     backdrop.classList.remove('show');
+    backdrop.setAttribute('aria-hidden', 'true');
+    backdrop.inert = true;
+    if (document.contains(anchorElement)) anchorElement.focus({ preventScroll: true });
   };
 
   backdrop.onclick = (e) => {
@@ -229,6 +266,13 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
       hide();
     }
   };
+
+  backdrop.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      hide();
+    }
+  });
 
   const isOpen = () => backdrop.classList.contains('show');
 

@@ -5,9 +5,9 @@ import { createSettingsPanel } from './settings-panel';
 import { i18n } from '../utils/i18n';
 import type { ReaderHandle } from '../reader/contracts';
 
-export function createFloatControl(readerHandle: ReaderHandle): void {
+export function createFloatControl(readerHandle: ReaderHandle): () => void {
   const floatControl = document.createElement('div');
-  floatControl.className = `bookmark-control${store.settings.showControl ? '' : ' hidden'}`;
+  floatControl.className = 'bookmark-control';
 
   // Read saved position
   let savedPos = { side: 'right', topPercent: 50 };
@@ -24,7 +24,8 @@ export function createFloatControl(readerHandle: ReaderHandle): void {
   floatControl.style.top = `${savedPos.topPercent}%`;
 
   // Buttons: Top -> Mode -> Settings
-  const topBtn = document.createElement('div');
+  const topBtn = document.createElement('button');
+  topBtn.type = 'button';
   topBtn.className = 'bm-btn bm-top-btn';
   const updateTopBtn = () => {
     if (readerHandle.isActive()) {
@@ -34,6 +35,7 @@ export function createFloatControl(readerHandle: ReaderHandle): void {
       topBtn.innerHTML = svgTop;
       topBtn.title = i18n.backToTop;
     }
+    topBtn.setAttribute('aria-label', topBtn.title);
   };
 
   updateTopBtn();
@@ -54,10 +56,12 @@ export function createFloatControl(readerHandle: ReaderHandle): void {
     }
   };
 
-  const modeBtn = document.createElement('div');
+  const modeBtn = document.createElement('button');
+  modeBtn.type = 'button';
   modeBtn.className = 'bm-btn bm-mode-btn';
   modeBtn.innerHTML = svgReader;
   modeBtn.title = i18n.readerMode;
+  modeBtn.setAttribute('aria-label', i18n.readerMode);
   modeBtn.onclick = (e) => {
     e.stopPropagation();
     if (readerHandle.isActive()) {
@@ -68,22 +72,23 @@ export function createFloatControl(readerHandle: ReaderHandle): void {
   };
 
   // Sync button icons
-  store.on('readerModeChanged', () => {
+  const unsubscribeReaderMode = store.on('readerModeChanged', () => {
     modeBtn.innerHTML = readerHandle.isActive() ? svgScroll : svgReader;
     updateTopBtn();
   });
 
-  store.on('settingsChanged', () => {
+  const unsubscribeSettings = store.on('settingsChanged', () => {
     updateTopBtn();
   });
 
-  const settings = createSettingsPanel(floatControl);
-  document.body.appendChild(settings.getContainerElement()); // Append bottom sheet to body
-
-  const settingsBtn = document.createElement('div');
+  const settingsBtn = document.createElement('button');
+  settingsBtn.type = 'button';
   settingsBtn.className = 'bm-btn bm-settings-btn';
   settingsBtn.innerHTML = svgSettings;
   settingsBtn.title = i18n.settings;
+  settingsBtn.setAttribute('aria-label', i18n.settings);
+  const settings = createSettingsPanel(settingsBtn);
+  document.body.appendChild(settings.getContainerElement()); // Append bottom sheet to body
   settingsBtn.onclick = (e) => {
     e.stopPropagation();
     if (settings.isOpen()) {
@@ -196,4 +201,11 @@ export function createFloatControl(readerHandle: ReaderHandle): void {
       e.preventDefault();
     }
   }, { capture: true });
+
+  return () => {
+    unsubscribeReaderMode();
+    unsubscribeSettings();
+    settings.getContainerElement().remove();
+    floatControl.remove();
+  };
 }

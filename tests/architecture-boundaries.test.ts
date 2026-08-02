@@ -67,6 +67,29 @@ test('public image contracts use generic retry terminology', async () => {
   assert.equal(/\bnl(?:Token)?\b/.test(contracts.join('\n')), false);
 });
 
+test('reader UI shares one capability classifier instead of inferring touch independently', async () => {
+  const readerSource = await readFile(path.join(srcRoot, 'reader/reader-controller.ts'), 'utf8');
+  const shellSources = await Promise.all(
+    (await sourceFiles(path.join(srcRoot, 'reader/shell'))).map(file => readFile(file, 'utf8')),
+  );
+  const combined = [readerSource, ...shellSources].join('\n');
+  assert.doesNotMatch(combined, /['"]ontouchstart['"]\s+in\s+window/);
+  assert.doesNotMatch(combined, /navigator\.maxTouchPoints/);
+  assert.doesNotMatch(combined, /matchMedia\(['"]\(hover:\s*none\)['"]\)/);
+  assert.match(readerSource, /getReaderInputCapabilities\(\)/);
+  assert.match(readerSource, /inputCapabilities,/);
+});
+
+test('E-Hentai source URL syntax stays inside its site adapter', async () => {
+  const files = await sourceFiles(srcRoot);
+  for (const file of files) {
+    const relative = path.relative(srcRoot, file).replace(/\\/g, '/');
+    if (relative.startsWith('sites/e-hentai/')) continue;
+    const source = await readFile(file, 'utf8');
+    assert.equal(/hath\.network|HATH_SOURCE_PATTERN|keystamp=/.test(source), false, relative);
+  }
+});
+
 test('transitional feature and legacy reader UI files are gone', async () => {
   const removed = [
     'features/scroll-mode.ts',
@@ -79,6 +102,10 @@ test('transitional feature and legacy reader UI files are gone', async () => {
   for (const relative of removed) {
     await assert.rejects(access(path.join(srcRoot, relative)), relative);
   }
+  const sources = await Promise.all((await sourceFiles(srcRoot)).map(file => readFile(file, 'utf8')));
+  const userscriptConfig = await readFile(path.resolve(srcRoot, '../vite.config.ts'), 'utf8');
+  assert.doesNotMatch(sources.join('\n'), /\bshowControl\b|\bGM_registerMenuCommand\b/);
+  assert.doesNotMatch(userscriptConfig, /GM_registerMenuCommand/);
 });
 
 test('PhotoSwipe package and internal fields stay behind the driver', async () => {
@@ -90,4 +117,119 @@ test('PhotoSwipe package and internal fields stay behind the driver', async () =
     assert.equal(/from\s+['"]photoswipe['"]/.test(source), false, relative);
     assert.equal(/\bcurrSlide\b|\bcontentLoader\b/.test(source), false, relative);
   }
+});
+
+test('dynamic spread changes keep the live Reader driver instead of rebuilding it', async () => {
+  const source = await readFile(path.join(srcRoot, 'reader/reader-controller.ts'), 'utf8');
+  const driver = await readFile(path.join(srcRoot, 'reader/drivers/photoswipe-driver.ts'), 'utf8');
+  const settleScheduler = await readFile(
+    path.join(srcRoot, 'reader/controllers/interaction-settle-scheduler.ts'),
+    'utf8',
+  );
+  const refreshFunction = source.match(/function refreshSpreadLayout\([\s\S]*?\n    const onResize/)?.[0] ?? '';
+  const syncLayout = driver.match(/syncLayout\(index: number\): void \{([\s\S]*?)\n  \}/)?.[1] ?? '';
+  assert.match(source, /createInteractionSettleScheduler\(\{/);
+  assert.match(source, /isBlocked: \(\) => pswp\?\.isInteracting\(\) \?\? false/);
+  assert.match(source, /onSettled: applyPendingSpreadLayout/);
+  assert.match(refreshFunction, /layoutSettleScheduler\.request\(\)/);
+  assert.doesNotMatch(refreshFunction, /requestAnimationFrame/);
+  assert.match(settleScheduler, /requiredIdleFrames = options\.requiredIdleFrames \?\? 2/);
+  assert.match(settleScheduler, /maxBlockedChecks/);
+  assert.match(settleScheduler, /scheduleDelayedFrame/);
+  assert.match(refreshFunction, /pswp\.syncLayout\(targetSpread\)/);
+  assert.doesNotMatch(refreshFunction, /destroy\(|initPhotoSwipe\(/);
+  assert.doesNotMatch(source, /requestAnimationFrame\(refreshHudForCurrent\)/);
+  assert.doesNotMatch(syncLayout, /stopAll|mainScroll\?\.stop/);
+  assert.match(driver, /instance\.on\('afterSetContent'/);
+  assert.match(driver, /reconcilePhotoSwipeHolder/);
+  assert.match(driver, /activeAnimations\.some\(animation/);
+  assert.match(driver, /animation\?\.props\?\.isMainScroll/);
+  assert.doesNotMatch(driver, /activeAnimations\?\.length/);
+  assert.doesNotMatch(driver, /refreshSlideContent\(/);
+  assert.match(driver, /getPhotoSwipeHolderPosition/);
+  assert.match(syncLayout, /staleSlide\.destroy\(\)/);
+  assert.match(driver, /getSpreadImageRenderState\(image\) === 'loaded'/);
+  assert.match(driver, /shouldRetrySpreadImage\(attempts, slide\.index === this\.instance\.currIndex\)/);
+  assert.match(driver, /onRenderedImageStateChange/);
+});
+
+test('reader remapping always releases its guard and keeps HUD state image-aware', async () => {
+  const source = await readFile(path.join(srcRoot, 'reader/reader-controller.ts'), 'utf8');
+  const hud = await readFile(path.join(srcRoot, 'reader/shell/status-hud.ts'), 'utf8');
+  const css = await readFile(path.join(srcRoot, 'reader/shell/reader.css'), 'utf8');
+  const afterPrepend = source.match(/afterPrepend: itemCount => \{([\s\S]*?)\n    \},/)?.[1] ?? '';
+  const onPageAdded = source.match(/onPageAdded: direction => \{([\s\S]*?)\n    \},/)?.[1] ?? '';
+  const syncImages = source.match(/function syncImages\(\): void \{([\s\S]*?)\n  \}/)?.[1] ?? '';
+  const refreshFunction = source.match(/function refreshSpreadLayout\([\s\S]*?\n    refreshActiveLayout/)?.[0] ?? '';
+  const closeHandler = source.match(/pswp\.on\('close',[\s\S]*?\n    \}\);/)?.[0] ?? '';
+  assert.doesNotMatch(afterPrepend, /pswp|spreadLayout|startReinitializing/);
+  assert.match(onPageAdded, /refreshActiveLayout\(\)/);
+  assert.match(syncImages, /if \(!pswp\) \{[\s\S]*?spreadLayout = calculateSpreadLayout\(\)/);
+  assert.doesNotMatch(syncImages, /refreshSlide\(/);
+  assert.equal((refreshFunction.match(/finally \{/g) ?? []).length >= 2, true);
+  assert.match(refreshFunction, /finishReinitializing\(\)/);
+  assert.match(source, /onIdle: \(\) => refreshActiveHud\(\)/);
+  assert.doesNotMatch(source, /onIdle: \(\) => shell\.hideStatus\(\)/);
+  assert.equal(
+    (source.match(/const isActiveIndex = activeLogicalIndices\(\)\.includes\(index\)/g) ?? []).length,
+    2,
+  );
+  assert.match(source, /if \(isActiveIndex\) refreshHudForCurrent\(\)/);
+  assert.match(source, /if \(isActiveIndex\) syncUiAvailabilityForCurrent\(\)/);
+  assert.doesNotMatch(source, /refreshSlide:\s*index/);
+  assert.match(source, /refreshSpreadLayout\(session\.currentIndex, index\)/);
+  assert.match(source, /phase === 'loaded' && !pswp\.isCurrentContentLoaded\(\)/);
+  assert.match(source, /renderedFailedLogicalIndices/);
+  assert.match(source, /pswp\.init\(\);\s*refreshHudForCurrent\(\)/);
+  const mobileTimeout = source.match(/function triggerMobileUITimeout\(\) \{([\s\S]*?)\n    \}/)?.[1] ?? '';
+  const syncUi = source.match(/function syncUiAvailabilityForCurrent\(\): void \{([\s\S]*?)\n    \}/)?.[1] ?? '';
+  assert.doesNotMatch(mobileTimeout, /isCurrentContentLoaded/);
+  assert.match(mobileTimeout, /pswp\?\.hideUi\(\)/);
+  assert.match(syncUi, /if \(touchOnlyUi\) return;/);
+  assert.match(syncUi, /if \(!pswp\.isCurrentContentLoaded\(\)\)[\s\S]*?pswp\.showUi\(\)/);
+  assert.match(hud, /renderedKey !== nextKey/);
+  const hudVisibleRule = css.match(/\.sp-hud-container\.show \{([\s\S]*?)\n\}/)?.[1] ?? '';
+  assert.doesNotMatch(hudVisibleRule, /pointer-events:\s*auto/);
+  assert.doesNotMatch(closeHandler, /isReinitializing/);
+  assert.match(source, /function close\(\): void \{\s*if \(!isActive\) return;/);
+});
+
+test('stable spread slots do not collapse while the partner source is pending', async () => {
+  const css = await readFile(path.join(srcRoot, 'reader/shell/reader.css'), 'utf8');
+  const pageRule = css.match(/\.hr-reader-spread__page \{([\s\S]*?)\n\}/)?.[1] ?? '';
+  const pendingRule = css.match(/\.hr-reader-spread__page--pending \{([\s\S]*?)\n\}/)?.[1] ?? '';
+  assert.match(pageRule, /flex:\s*0 0 calc\(50% - 10px\)/);
+  assert.doesNotMatch(pendingRule, /min-width:\s*1px/);
+  assert.match(pendingRule, /background:/);
+  assert.doesNotMatch(pendingRule, /background:\s*transparent/);
+  assert.match(css, /\.hr-reader-spread__page--pending::after[\s\S]*?animation:\s*hr-reader-pending-spin/);
+  assert.match(css, /\.hr-reader-spread__page:not\(:only-child\):first-child[\s\S]*?object-position:\s*right center/);
+  assert.match(css, /\.hr-reader-spread__page:not\(:only-child\):last-child[\s\S]*?object-position:\s*left center/);
+});
+
+test('owned-image cleanup is observer-driven and expensive materialization is serialized', async () => {
+  const scroll = await readFile(path.join(srcRoot, 'scroll/scroll-controller.ts'), 'utf8');
+  const config = await readFile(path.join(srcRoot, 'state/config.ts'), 'utf8');
+  assert.match(scroll, /ownedImageObserver = new IntersectionObserver/);
+  assert.match(scroll, /pendingLoadObserver = new IntersectionObserver/);
+  assert.match(scroll, /for \(const placeholder of pendingPlaceholders\)/);
+  assert.match(scroll, /\[\.\.\.pendingPlaceholders\]\.forEach\(placeholder => cancelPendingLoad\(placeholder, false\)\)/);
+  assert.doesNotMatch(scroll, /querySelectorAll<HTMLElement>\('\.r-img\[data-owns-object-url/);
+  assert.match(config, /imageMaterializeConcurrent:\s*1/);
+});
+
+test('settings controls explicitly resist host-page button styling', async () => {
+  const css = await readFile(path.join(srcRoot, 'ui/settings-panel.css'), 'utf8');
+  assert.match(css, /\.settings-backdrop \.segment-item[\s\S]*?background: transparent !important/);
+  assert.match(css, /\.settings-backdrop \.segment-item\.active[\s\S]*?color: #fff !important/);
+  assert.match(css, /\.settings-backdrop \.settings-close-btn[\s\S]*?background: transparent !important/);
+  assert.match(css, /\.settings-backdrop \.stepper-btn[\s\S]*?color: #fff !important/);
+});
+
+test('floating controls avoid sticky mobile tap and hover feedback', async () => {
+  const css = await readFile(path.join(srcRoot, 'ui/float-control.css'), 'utf8');
+  assert.match(css, /\.bookmark-control \{[\s\S]*?-webkit-tap-highlight-color:\s*transparent/);
+  assert.match(css, /\.bm-btn \{[\s\S]*?-webkit-tap-highlight-color:\s*transparent/);
+  assert.match(css, /@media \(hover: hover\) \{[\s\S]*?\.bm-btn:hover/);
+  assert.match(css, /@media \(hover: hover\) \{[\s\S]*?\.bm-mode-btn:hover/);
 });

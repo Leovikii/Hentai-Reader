@@ -3,9 +3,9 @@ export function createMouseTracker(
   panel: { openPanel: () => void; closePanel: () => void; isActive: () => boolean; },
   progress: { sleep: () => void; },
   getThumbnailPosition: () => 'top' | 'bottom' | 'left' | 'right',
+  touchOnlyUi: boolean,
 ) {
-  const isTouchDevice = window.matchMedia('(hover: none)').matches;
-  if (isTouchDevice) return;
+  if (touchOnlyUi) return;
 
   const SENSITIVITY = 140; // Pixels from the edge to trigger
 

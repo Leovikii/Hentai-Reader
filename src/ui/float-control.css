@@ -17,12 +17,8 @@
   -webkit-user-select: none;
   user-select: none;
   touch-action: none;
+  -webkit-tap-highlight-color: transparent;
   transform: translateY(-50%) scale(var(--hr-scale, 1));
-}
-
-.bookmark-control.hidden {
-  opacity: 0;
-  pointer-events: none;
 }
 
 .bookmark-control:not(.dragging) {
@@ -31,12 +27,6 @@
 
 .bookmark-control:not(.dragging):active {
   opacity: 1;
-}
-
-@media (hover: hover) {
-  .bookmark-control:not(.dragging):hover {
-    opacity: 1;
-  }
 }
 
 .bookmark-control.left-side {
@@ -67,11 +57,15 @@
   transition: all 0.2s;
   background: transparent;
   color: #fff;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.bm-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  transform: scale(1.1);
+.bm-btn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
 }
 
 .bookmark-control .bm-btn svg {
@@ -105,16 +99,29 @@
   box-shadow: 0 2px 8px rgba(245, 150, 170, 0.4);
 }
 
-.bm-mode-btn:hover {
-  background: var(--hr-accent-hover);
-  box-shadow: 0 4px 12px rgba(245, 150, 170, 0.6);
-  transform: scale(1.05);
-}
-
 .bm-mode-btn svg {
   width: 26px;
   height: 26px;
   opacity: 1;
+}
+
+/* Touch browsers can retain :hover after a tap, especially on host pages
+   without a mobile viewport. Keep hover feedback on real hover devices only. */
+@media (hover: hover) {
+  .bookmark-control:not(.dragging):hover {
+    opacity: 1;
+  }
+
+  .bm-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: scale(1.1);
+  }
+
+  .bm-mode-btn:hover {
+    background: var(--hr-accent-hover);
+    box-shadow: 0 4px 12px rgba(245, 150, 170, 0.6);
+    transform: scale(1.05);
+  }
 }
 
 

@@ -8,6 +8,10 @@ export interface ReaderDriverOptions {
   onBackgroundClick: (point: ScreenPoint) => void;
   onImageClick: (point: ScreenPoint) => void;
   onTap: (point: ScreenPoint) => void;
+  onRenderedImageStateChange: (event: {
+    logicalIndex: number;
+    state: 'loading' | 'loaded' | 'error';
+  }) => void;
 }
 
 /** Reader-facing navigation and input surface, independent of PhotoSwipe. */
@@ -20,6 +24,10 @@ export interface ReaderDriver {
   prev(): void;
   goTo(index: number): void;
   refreshSlide(index: number): void;
+  /** Reconcile a changed presentation data source without replacing the root reader. */
+  syncLayout(index: number): void;
+  /** True while a gesture or transition makes structural remapping unsafe. */
+  isInteracting(): boolean;
   stopMotion(): void;
   getSlideContentState(index: number): string | undefined;
   isCurrentContentLoaded(): boolean;
@@ -27,6 +35,7 @@ export interface ReaderDriver {
   isCurrentAtInitialZoom(): boolean;
   canToggleCurrentZoom(): boolean;
   toggleCurrentZoom(point: ScreenPoint): void;
+  showUi(): void;
   hideUi(): void;
   toggleUi(): boolean;
   appendUi(elements: readonly HTMLElement[]): void;
@@ -86,6 +95,7 @@ export interface ReaderHandle {
 export interface ReaderAppContext {
   getGalleryItems(): readonly GalleryItem[];
   isScrollMode(): boolean;
+  isDoublePageModeEnabled(): boolean;
   isAutoPlayEnabled(): boolean;
   setAutoPlayEnabled(enabled: boolean): void;
   getAutoPlayInterval(): number;

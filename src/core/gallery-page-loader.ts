@@ -13,8 +13,7 @@ export class GalleryPageLoader {
   private readonly adapter: GalleryAdapter;
   private readonly inFlight = new Map<string, Promise<GalleryPage>>();
   private readonly loadedUrls = new Set<string>();
-  private readonly retryAttempts = 2;
-  private readonly retryDelayMs = 500;
+  private readonly retryDelaysMs = [1000, 2000, 4000] as const;
 
   constructor(adapter: GalleryAdapter) {
     this.adapter = adapter;
@@ -55,16 +54,16 @@ export class GalleryPageLoader {
         if (signal?.aborted || (error as { name?: string })?.name === 'AbortError') {
           throw error;
         }
-        if (attempt >= this.retryAttempts) throw error;
-        await this.waitForRetry(signal);
+        if (attempt >= this.retryDelaysMs.length) throw error;
+        await this.waitForRetry(this.retryDelaysMs[attempt], signal);
       }
     }
   }
 
-  private waitForRetry(signal?: AbortSignal): Promise<void> {
+  private waitForRetry(delayMs: number, signal?: AbortSignal): Promise<void> {
     if (signal?.aborted) return Promise.reject(new DOMException('Request cancelled', 'AbortError'));
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(finish, this.retryDelayMs);
+      const timer = setTimeout(finish, delayMs);
       const onAbort = () => {
         clearTimeout(timer);
         signal?.removeEventListener('abort', onAbort);

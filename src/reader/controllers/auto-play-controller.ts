@@ -17,7 +17,7 @@ export function createAutoPlay(
   function start(): void {
     if (timer) clearInterval(timer);
     if (context.isAutoPlayEnabled()) {
-      timer = setInterval(nextImageFn, context.getAutoPlayInterval());
+      timer = setInterval(nextImageFn, Math.max(1000, context.getAutoPlayInterval()));
     }
   }
 

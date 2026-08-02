@@ -66,6 +66,7 @@ test('reuses a cached owned Blob when reader hands it directly back to scroll', 
     cachedLeases: 1,
     leasedCacheEntries: 1,
     ownedObjectUrls: 1,
+    ownedBlobBytes: 0,
     phases: 1,
     listeners: 0,
   });
@@ -392,23 +393,24 @@ test('keeps long galleries bounded and clears metadata for every evicted asset',
     lease.release();
   }
 
-  assert.equal(revoked.length, 920);
-  assert.equal(invalidated.length, 920);
-  assert.equal(evicted.length, 920);
+  assert.equal(revoked.length, 976);
+  assert.equal(invalidated.length, 976);
+  assert.equal(evicted.length, 976);
   assert.equal(revoked[0], 'blob:item-0');
-  assert.equal(revoked[revoked.length - 1], 'blob:item-919');
+  assert.equal(revoked[revoked.length - 1], 'blob:item-975');
   assert.equal(service.getCached('item-0'), undefined);
   assert.equal(service.getCached('item-919'), undefined);
   assert.equal(service.getCached('item-999')?.src, 'blob:item-999');
   assert.equal(service.getLatestCached()?.src, 'blob:item-999');
   assert.deepEqual(service.getStats(), {
     activeLoads: 0,
-    cachedEntries: 80,
+    cachedEntries: 24,
     activeLeases: 0,
     cachedLeases: 0,
     leasedCacheEntries: 0,
-    ownedObjectUrls: 80,
-    phases: 80,
+    ownedObjectUrls: 24,
+    ownedBlobBytes: 0,
+    phases: 24,
     listeners: 0,
   });
 });
@@ -436,13 +438,144 @@ test('protects leased scroll Blobs and returns to the cache bound after final re
   for (const lease of leases) lease.release();
 
   const stats = service.getStats();
-  assert.equal(stats.cachedEntries, 80);
+  assert.equal(stats.cachedEntries, 24);
   assert.equal(stats.cachedLeases, 0);
-  assert.equal(stats.ownedObjectUrls, 80);
-  assert.equal(revoked.length, 220);
+  assert.equal(stats.ownedObjectUrls, 24);
+  assert.equal(stats.ownedBlobBytes, 0);
+  assert.equal(revoked.length, 276);
 
   const reverse = service.acquire('item-299', { intent: 'foreground', priority: 100 });
   assert.equal((await reverse.result)?.src, 'blob:item-299');
-  assert.equal(revoked.length, 220);
+  assert.equal(revoked.length, 276);
   reverse.release();
+});
+
+test('exposes source dimension metadata while bytes load without treating it as decoded', async () => {
+  let finishDownload!: (dimensions: { width: number; height: number }) => void;
+  let byteLoads = 0;
+  const downloading = new Promise<{ width: number; height: number }>(resolve => {
+    finishDownload = resolve;
+  });
+  const service = new ImageLoadService({
+    resolve: async () => ({
+      src: 'https://images.example.test/page.webp',
+      sourceDimensions: { width: 1024, height: 1536 },
+    }),
+    loadBytes: async () => {
+      byteLoads++;
+      return downloading;
+    },
+    delay: noDelay,
+  });
+
+  const lease = service.acquire('viewer', { intent: 'foreground', priority: 100 });
+  await new Promise<void>(resolve => {
+    const unsubscribe = lease.subscribe(phase => {
+      if (phase !== 'downloading') return;
+      unsubscribe();
+      resolve();
+    });
+  });
+  assert.deepEqual(service.getDimensionsHint('viewer'), { width: 1024, height: 1536 });
+  assert.equal(byteLoads, 1);
+
+  finishDownload({ width: 1000, height: 1500 });
+  assert.deepEqual(await lease.result, {
+    src: 'https://images.example.test/page.webp',
+    sourceDimensions: { width: 1024, height: 1536 },
+    width: 1000,
+    height: 1500,
+  });
+  assert.equal(service.getDimensionsHint('viewer'), undefined);
+  lease.release();
+});
+
+test('aborts a timed-out materialization attempt without cancelling the shared lifecycle', async () => {
+  let resolves = 0;
+  const materializeSignals: AbortSignal[] = [];
+  const resolveSignals: AbortSignal[] = [];
+  const service = new ImageLoadService({
+    resolve: async (_url, context) => {
+      resolves++;
+      resolveSignals.push(context.signal);
+      return resolves === 1
+        ? { src: 'stalled-source', materializeData: { kind: 'test' }, loadTimeoutMs: 5 }
+        : { src: 'healthy-source', materializeData: { kind: 'test' }, loadTimeoutMs: 50 };
+    },
+    materialize: async (_url, resolved, signal) => {
+      materializeSignals.push(signal);
+      if (resolved.src === 'healthy-source') {
+        return {
+          src: 'blob:ready',
+          ownsObjectUrl: true,
+          decodedDimensions: { width: 20, height: 30 },
+        };
+      }
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new Error('timed out')), { once: true });
+      });
+    },
+    loadBytes: async () => { throw new Error('decoded materialization should skip byte loading'); },
+    delay: noDelay,
+  }, { resolveAttempts: 2, alternateSourceRetries: 0, freshResolveRetries: 0 });
+
+  const lease = service.acquire('viewer', { intent: 'foreground', priority: 100 });
+  assert.equal((await lease.result)?.src, 'blob:ready');
+  assert.equal(resolves, 2);
+  assert.equal(materializeSignals[0].aborted, true);
+  assert.equal(materializeSignals[1].aborted, false);
+  assert.equal(resolveSignals[0], resolveSignals[1]);
+  assert.equal(resolveSignals[0].aborted, false);
+  lease.release();
+});
+
+test('reuses dimensions from an already-decoded materialized Blob', async () => {
+  let byteLoads = 0;
+  const service = new ImageLoadService({
+    resolve: async () => ({ src: 'raw', materializeData: { kind: 'test' } }),
+    materialize: async () => ({
+      src: 'blob:decoded',
+      ownsObjectUrl: true,
+      byteSize: 123,
+      decodedDimensions: { width: 800, height: 1200 },
+    }),
+    loadBytes: async () => {
+      byteLoads++;
+      return { width: 1, height: 1 };
+    },
+    delay: noDelay,
+  });
+
+  const lease = service.acquire('viewer', { intent: 'foreground', priority: 100 });
+  const asset = await lease.result;
+  assert.equal(byteLoads, 0);
+  assert.equal(asset?.width, 800);
+  assert.equal(asset?.height, 1200);
+  lease.release();
+});
+
+test('enforces exact managed Blob bytes without revoking an active lease', async () => {
+  const revoked: string[] = [];
+  const service = new ImageLoadService({
+    resolve: async url => ({
+      src: `blob:${url}`,
+      ownsObjectUrl: true,
+      byteSize: 60,
+    }),
+    loadBytes: async () => ({ width: 1, height: 1 }),
+    delay: noDelay,
+    revokeObjectUrl: src => revoked.push(src),
+  }, { cacheEntries: 10, ownedObjectUrlEntries: 10, ownedBlobBytes: 100 });
+
+  const first = service.acquire('first', { intent: 'scroll', priority: 1 });
+  await first.result;
+  const second = service.acquire('second', { intent: 'scroll', priority: 1 });
+  await second.result;
+  assert.deepEqual(revoked, []);
+  assert.equal(service.getStats().ownedBlobBytes, 120);
+
+  first.release();
+  assert.deepEqual(revoked, ['blob:first']);
+  assert.equal(service.getStats().ownedBlobBytes, 60);
+  second.release();
 });

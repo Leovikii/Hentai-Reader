@@ -6,7 +6,7 @@
   width: 100%;
   height: 100%;
   background: rgba(0, 0, 0, 0.5);
-  z-index: 2147483648;
+  z-index: 2147483647;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.3s;
@@ -99,6 +99,23 @@
   font-weight: 600;
   color: #fff;
   margin: 0;
+}
+
+.settings-close-btn,
+.toggle-switch,
+.stepper-btn,
+.segment-item {
+  appearance: none;
+  border: 0;
+  font: inherit;
+}
+
+.settings-close-btn:focus-visible,
+.toggle-switch:focus-visible,
+.stepper-btn:focus-visible,
+.segment-item:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
 }
 
 .settings-close-btn {
@@ -366,4 +383,99 @@
 
 :root.hr-mobile .settings-bottom-sheet {
   padding: 0 20px 20px;
+}
+
+/* Host-page isolation. Several supported sites publish global button rules
+   (including white backgrounds and !important text colors). Keep semantic
+   controls while fully specifying every visual state inside our dialog. */
+.settings-backdrop .settings-bottom-sheet {
+  isolation: isolate;
+  color-scheme: dark;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.settings-backdrop .settings-close-btn,
+.settings-backdrop .toggle-switch,
+.settings-backdrop .stepper-btn,
+.settings-backdrop .segment-item {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  border: 0 !important;
+  background-image: none !important;
+  font: inherit !important;
+  text-decoration: none !important;
+  text-shadow: none !important;
+  text-transform: none !important;
+  box-sizing: border-box !important;
+}
+
+.settings-backdrop .settings-close-btn {
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.6) !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.settings-backdrop .settings-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #fff !important;
+}
+
+.settings-backdrop .toggle-switch {
+  background: #333 !important;
+  color: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.settings-backdrop .toggle-switch.on {
+  background: var(--hr-accent) !important;
+}
+
+.settings-backdrop .stepper-btn {
+  background: transparent !important;
+  color: #fff !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.settings-backdrop .stepper-btn:hover {
+  background: rgba(255, 255, 255, 0.15) !important;
+}
+
+.settings-backdrop .stepper-btn:active {
+  background: rgba(255, 255, 255, 0.25) !important;
+}
+
+.settings-backdrop .segment-item {
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.68) !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+}
+
+.settings-backdrop .segment-item:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+}
+
+.settings-backdrop .segment-item.active,
+.settings-backdrop .segment-item[aria-pressed="true"] {
+  background: rgba(255, 255, 255, 0.18) !important;
+  color: #fff !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2) !important;
+}
+
+.settings-backdrop .interval-input {
+  -webkit-appearance: textfield !important;
+  appearance: textfield !important;
+  background: transparent !important;
+  color: #fff !important;
+  border: 0 !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
 }

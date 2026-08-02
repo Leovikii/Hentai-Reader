@@ -1,7 +1,9 @@
 import type { SiteAdapter } from '../../core/site-adapter';
 import type { GalleryItem } from '../../core/gallery';
+import { LOAD_PRIORITY } from '../../state/load-policy';
 import {
   create18ComicBrowserMaterializer,
+  get18ComicImageLoadTimeout,
   resolve18ComicSource,
 } from './materializer';
 
@@ -116,11 +118,15 @@ export const Comic18Adapter: SiteAdapter = {
     };
   },
 
-  async resolveImage(url: string) {
+  async resolveImage(url: string, context) {
+    const loadTimeoutMs = get18ComicImageLoadTimeout(
+      context.priority,
+      LOAD_PRIORITY.foreground,
+    );
     try {
-      return resolve18ComicSource(url);
+      return { ...resolve18ComicSource(url), loadTimeoutMs };
     } catch {
-      return { src: url };
+      return { src: url, loadTimeoutMs };
     }
   },
 
@@ -134,7 +140,16 @@ export const Comic18Adapter: SiteAdapter = {
 
   hideOriginalElements() {
     const pages = Array.from(document.querySelectorAll('.scramble-page'));
-    for (let index = 1; index < pages.length; index++) pages[index].remove();
-    document.querySelectorAll('.owl-carousel').forEach(element => element.remove());
+    const removed = [
+      ...pages.slice(1),
+      ...Array.from(document.querySelectorAll('.owl-carousel')),
+    ].map(element => ({ element, parent: element.parentNode, next: element.nextSibling }));
+    removed.forEach(({ element }) => element.remove());
+    return () => {
+      for (const { element, parent, next } of removed) {
+        if (!parent || element.parentNode) continue;
+        parent.insertBefore(element, next?.parentNode === parent ? next : null);
+      }
+    };
   },
 };

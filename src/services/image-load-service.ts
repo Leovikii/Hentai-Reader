@@ -5,10 +5,12 @@ import type {
   ResolvedImage,
 } from '../core/image';
 import type { ImageResolveContext } from '../core/site-adapter';
+import type { ImageTaskLane } from './image-task-scheduler';
 
 export interface ImageAcquireOptions {
   intent: ImageLoadIntent;
   priority: number;
+  lane?: ImageTaskLane;
 }
 
 export interface ImageLoadLease {
@@ -27,6 +29,8 @@ export interface ImageLoadServiceDeps {
   loadBytes: (
     src: string,
     signal: AbortSignal,
+    priority: number,
+    lane: ImageTaskLane,
   ) => Promise<{ width: number; height: number }>;
   materialize?: (
     url: string,
@@ -34,7 +38,12 @@ export interface ImageLoadServiceDeps {
     signal: AbortSignal,
     priority: number,
   ) => Promise<ResolvedImage | null>;
-  promote?: (url: string, priority: number) => void;
+  schedule?: <T>(
+    url: string,
+    task: () => Promise<T>,
+    options: { priority: number; lane: ImageTaskLane; signal: AbortSignal },
+  ) => Promise<T>;
+  promote?: (url: string, priority: number, lane: ImageTaskLane) => void;
   delay?: (ms: number) => Promise<void>;
   invalidateResolved?: (url: string, src: string) => void;
   setResolvedSource?: (url: string, src: string) => void;
@@ -49,6 +58,8 @@ export interface ImageLoadPolicy {
   freshResolveRetries: number;
   retryDelay: number;
   cacheEntries: number;
+  ownedObjectUrlEntries: number;
+  ownedBlobBytes: number;
 }
 
 export interface ImageLoadServiceStats {
@@ -58,6 +69,7 @@ export interface ImageLoadServiceStats {
   cachedLeases: number;
   leasedCacheEntries: number;
   ownedObjectUrls: number;
+  ownedBlobBytes: number;
   phases: number;
   listeners: number;
 }
@@ -68,6 +80,8 @@ const defaultPolicy: ImageLoadPolicy = {
   freshResolveRetries: 2,
   retryDelay: 1000,
   cacheEntries: 80,
+  ownedObjectUrlEntries: 24,
+  ownedBlobBytes: 96 * 1024 * 1024,
 };
 
 interface ActiveLoad {
@@ -75,6 +89,8 @@ interface ActiveLoad {
   leases: Set<symbol>;
   sourceRetryLeases: Set<symbol>;
   priority: number;
+  lane: ImageTaskLane;
+  dimensionsHint?: { width: number; height: number };
   result: Promise<LoadedImage | null>;
 }
 
@@ -99,6 +115,7 @@ export class ImageLoadService {
 
   acquire(url: string, options: ImageAcquireOptions): ImageLoadLease {
     const token = Symbol(options.intent);
+    const requestedLane = options.lane ?? this.defaultLane(options.intent);
     const cached = this.cache.get(url);
     if (cached) {
       this.touchCache(url, cached);
@@ -111,9 +128,11 @@ export class ImageLoadService {
     if (load) {
       load.leases.add(token);
       if (this.canRetrySource(options.intent)) load.sourceRetryLeases.add(token);
-      if (options.priority > load.priority) {
+      const shouldPromoteLane = requestedLane === 'foreground' && load.lane === 'background';
+      if (options.priority > load.priority || shouldPromoteLane) {
         load.priority = options.priority;
-        this.deps.promote?.(url, options.priority);
+        if (shouldPromoteLane) load.lane = 'foreground';
+        this.deps.promote?.(url, load.priority, load.lane);
       }
       return this.createLease(url, token, load.result);
     }
@@ -124,9 +143,24 @@ export class ImageLoadService {
       leases: new Set([token]),
       sourceRetryLeases: new Set(this.canRetrySource(options.intent) ? [token] : []),
       priority: options.priority,
+      lane: requestedLane,
       result: Promise.resolve(null),
     };
-    load.result = this.run(url, load)
+    const task = () => this.run(url, load!);
+    const scheduled = this.deps.schedule
+      ? this.deps.schedule(url, task, {
+        priority: load.priority,
+        lane: load.lane,
+        signal: controller.signal,
+      })
+      : task();
+    load.result = scheduled
+      .catch(error => {
+        if (controller.signal.aborted || (error as { name?: string })?.name === 'AbortError') {
+          return this.finishWithoutAsset(url, controller.signal);
+        }
+        throw error;
+      })
       .finally(() => {
         if (this.active.get(url) === load) this.active.delete(url);
       });
@@ -142,6 +176,11 @@ export class ImageLoadService {
     return this.cache.get(url)?.asset;
   }
 
+  /** Metadata exposed only while a source is actively resolving/downloading. */
+  getDimensionsHint(url: string): { width: number; height: number } | undefined {
+    return this.active.get(url)?.dimensionsHint;
+  }
+
   getLatestCached(): LoadedImage | undefined {
     let latest: LoadedImage | undefined;
     for (const entry of this.cache.values()) latest = entry.asset;
@@ -154,13 +193,17 @@ export class ImageLoadService {
     let cachedLeases = 0;
     let leasedCacheEntries = 0;
     let ownedObjectUrls = 0;
+    let ownedBlobBytes = 0;
     let listeners = 0;
 
     for (const load of this.active.values()) activeLeases += load.leases.size;
     for (const entry of this.cache.values()) {
       cachedLeases += entry.leases.size;
       if (entry.leases.size > 0) leasedCacheEntries++;
-      if (entry.asset.ownsObjectUrl) ownedObjectUrls++;
+      if (entry.asset.ownsObjectUrl) {
+        ownedObjectUrls++;
+        ownedBlobBytes += entry.asset.byteSize ?? 0;
+      }
     }
     for (const subscribers of this.listeners.values()) listeners += subscribers.size;
 
@@ -171,6 +214,7 @@ export class ImageLoadService {
       cachedLeases,
       leasedCacheEntries,
       ownedObjectUrls,
+      ownedBlobBytes,
       phases: this.phases.size,
       listeners,
     };
@@ -184,6 +228,7 @@ export class ImageLoadService {
       this.setPhase(url, 'resolving');
       const candidate = await this.resolve(url, undefined, attempt > 0, load);
       resolved = await this.materialize(url, candidate, load);
+      this.rememberDimensionsHint(load, resolved?.sourceDimensions);
       if (resolved?.src) break;
       if (attempt + 1 < this.policy.resolveAttempts) await this.wait(signal);
     }
@@ -218,6 +263,7 @@ export class ImageLoadService {
       attemptedSources.add(next.src);
       this.discard(url, resolved);
       resolved = next;
+      this.rememberDimensionsHint(load, next.sourceDimensions);
       loaded = await this.tryLoad(url, next, load);
     }
 
@@ -237,6 +283,7 @@ export class ImageLoadService {
       attemptedSources.add(next.src);
       this.discard(url, resolved);
       resolved = next;
+      this.rememberDimensionsHint(load, next.sourceDimensions);
       loaded = await this.tryLoad(url, next, load);
     }
 
@@ -269,21 +316,28 @@ export class ImageLoadService {
     load: ActiveLoad,
   ): Promise<{ width: number; height: number } | null> {
     if (load.controller.signal.aborted) return null;
+    const decoded = resolved.decodedDimensions;
+    if (decoded
+        && Number.isFinite(decoded.width)
+        && Number.isFinite(decoded.height)
+        && decoded.width > 0
+        && decoded.height > 0) {
+      return decoded;
+    }
     this.setPhase(url, 'downloading');
-    const parentSignal = load.controller.signal;
-    const attemptController = new AbortController();
-    const abortAttempt = () => attemptController.abort();
-    parentSignal.addEventListener('abort', abortAttempt, { once: true });
-    const timeout = resolved.loadTimeoutMs && resolved.loadTimeoutMs > 0
-      ? setTimeout(abortAttempt, resolved.loadTimeoutMs)
-      : null;
     try {
-      return await this.deps.loadBytes(resolved.src, attemptController.signal);
+      return await this.runSourceAttempt(
+        load.controller.signal,
+        resolved.loadTimeoutMs,
+        signal => this.deps.loadBytes(
+          resolved.src,
+          signal,
+          load.priority,
+          load.lane,
+        ),
+      );
     } catch {
       return null;
-    } finally {
-      if (timeout !== null) clearTimeout(timeout);
-      parentSignal.removeEventListener('abort', abortAttempt);
     }
   }
 
@@ -311,19 +365,40 @@ export class ImageLoadService {
     load: ActiveLoad,
   ): Promise<ResolvedImage | null> {
     if (!resolved?.src || load.controller.signal.aborted) return resolved;
-    if (!this.deps.materialize) return resolved;
+    const materialize = this.deps.materialize;
+    if (!materialize) return resolved;
     try {
-      const materialized = await this.deps.materialize(
-        url,
-        resolved,
+      const materialized = await this.runSourceAttempt(
         load.controller.signal,
-        load.priority,
+        resolved.loadTimeoutMs,
+        signal => materialize(url, resolved, signal, load.priority),
       );
       if (!materialized) this.discard(url, resolved);
       return materialized;
     } catch {
       this.discard(url, resolved);
       return null;
+    }
+  }
+
+  /** Bounds one source-specific attempt without aborting the shared load lifecycle. */
+  private async runSourceAttempt<T>(
+    parentSignal: AbortSignal,
+    timeoutMs: number | undefined,
+    task: (signal: AbortSignal) => Promise<T>,
+  ): Promise<T> {
+    const attemptController = new AbortController();
+    const abortAttempt = () => attemptController.abort();
+    if (parentSignal.aborted) abortAttempt();
+    else parentSignal.addEventListener('abort', abortAttempt, { once: true });
+    const timeout = timeoutMs && timeoutMs > 0
+      ? setTimeout(abortAttempt, timeoutMs)
+      : null;
+    try {
+      return await task(attemptController.signal);
+    } finally {
+      if (timeout !== null) clearTimeout(timeout);
+      parentSignal.removeEventListener('abort', abortAttempt);
     }
   }
 
@@ -416,17 +491,55 @@ export class ImageLoadService {
     return intent === 'foreground' || intent === 'neighbor' || intent === 'scroll';
   }
 
+  private rememberDimensionsHint(
+    load: ActiveLoad,
+    dimensions: ResolvedImage['sourceDimensions'],
+  ): void {
+    if (!dimensions
+        || !Number.isFinite(dimensions.width)
+        || !Number.isFinite(dimensions.height)
+        || dimensions.width <= 0
+        || dimensions.height <= 0) {
+      load.dimensionsHint = undefined;
+      return;
+    }
+    load.dimensionsHint = {
+      width: dimensions.width,
+      height: dimensions.height,
+    };
+  }
+
+  private defaultLane(intent: ImageLoadIntent): ImageTaskLane {
+    return intent === 'foreground' || intent === 'neighbor' ? 'foreground' : 'background';
+  }
+
   private touchCache(url: string, entry: CacheEntry): void {
     this.cache.delete(url);
     this.cache.set(url, entry);
   }
 
   private trimCache(): void {
-    if (this.cache.size <= this.policy.cacheEntries) return;
+    let ownedEntries = 0;
+    let ownedBytes = 0;
+    for (const entry of this.cache.values()) {
+      if (!entry.asset.ownsObjectUrl) continue;
+      ownedEntries++;
+      ownedBytes += entry.asset.byteSize ?? 0;
+    }
+    const isOverBudget = () => this.cache.size > this.policy.cacheEntries
+      || ownedEntries > this.policy.ownedObjectUrlEntries
+      || ownedBytes > this.policy.ownedBlobBytes;
+    if (!isOverBudget()) return;
     for (const [url, entry] of this.cache) {
-      if (this.cache.size <= this.policy.cacheEntries) break;
+      if (!isOverBudget()) break;
       if (entry.leases.size > 0) continue;
+      const generalOverflow = this.cache.size > this.policy.cacheEntries;
+      if (!generalOverflow && !entry.asset.ownsObjectUrl) continue;
       this.cache.delete(url);
+      if (entry.asset.ownsObjectUrl) {
+        ownedEntries--;
+        ownedBytes -= entry.asset.byteSize ?? 0;
+      }
       this.deps.invalidateResolved?.(url, entry.asset.src);
       this.deps.onEvict?.(url, entry.asset);
       if (entry.asset.ownsObjectUrl) {

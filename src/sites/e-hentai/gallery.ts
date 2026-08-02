@@ -9,6 +9,32 @@ export interface EHentaiPageMetadata {
 export interface EHentaiViewerImage {
   src: string;
   nl?: string;
+  dimensions?: {
+    width: number;
+    height: number;
+  };
+}
+
+const HATH_SOURCE_PATTERN = /^\/h\/[0-9a-f]{40}-\d+-(\d+)-(\d+)-[a-z0-9]+(?:\/|$)/i;
+const MAX_SOURCE_DIMENSION = 100_000;
+
+/** Parse E-Hentai's site-specific hath path metadata without leaking it into shared code. */
+export function parseEHentaiSourceDimensions(src: string): EHentaiViewerImage['dimensions'] {
+  let url: URL;
+  try {
+    url = new URL(src);
+  } catch {
+    return undefined;
+  }
+  if (url.hostname !== 'hath.network' && !url.hostname.endsWith('.hath.network')) return undefined;
+  const match = url.pathname.match(HATH_SOURCE_PATTERN);
+  if (!match) return undefined;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height)
+      || width <= 0 || height <= 0
+      || width > MAX_SOURCE_DIMENSION || height > MAX_SOURCE_DIMENSION) return undefined;
+  return { width, height };
 }
 
 function paginationUrl(doc: Document, marker: '<' | '>'): string | null {
@@ -120,5 +146,10 @@ export function parseEHentaiViewer(doc: Document): EHentaiViewerImage | null {
   if (!image?.src) return null;
   const onerror = image.getAttribute('onerror') || '';
   const token = onerror.match(/nl\(['"]([^'"]+)['"]\)/)?.[1];
-  return { src: image.src, ...(token ? { nl: token } : {}) };
+  const dimensions = parseEHentaiSourceDimensions(image.src);
+  return {
+    src: image.src,
+    ...(token ? { nl: token } : {}),
+    ...(dimensions ? { dimensions } : {}),
+  };
 }

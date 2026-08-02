@@ -62,8 +62,10 @@ export function createSiteAdapterTemplate(config: SiteAdapterTemplateConfig): Si
     getContainer: () => document.querySelector(config.containerSelector) as HTMLElement | null,
     hideOriginalElements() {
       if (!config.hiddenSelectors?.length) return;
-      document.querySelectorAll<HTMLElement>(config.hiddenSelectors.join(','))
-        .forEach(element => { element.style.display = 'none'; });
+      const elements = Array.from(document.querySelectorAll<HTMLElement>(config.hiddenSelectors.join(',')));
+      const displays = elements.map(element => element.style.display);
+      elements.forEach(element => { element.style.display = 'none'; });
+      return () => elements.forEach((element, index) => { element.style.display = displays[index]; });
     },
   };
   if (config.materializeImage) adapter.materializeImage = config.materializeImage;

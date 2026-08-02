@@ -7,6 +7,7 @@ import { acquireImage } from '../services/image-load-runtime';
 import type { ImageLoadLease } from '../services/image-load-service';
 import { notifyScrollImageLoaded } from './image-events';
 import { applyKnownImageGeometry } from './scroll-navigation';
+import { i18n } from '../utils/i18n';
 
 function setErrorState(
   placeholder: HTMLElement,
@@ -31,7 +32,121 @@ function setErrorState(
 
 let lazyLoadObserver: IntersectionObserver | null = null;
 const placeholderLeases = new WeakMap<HTMLElement, ImageLoadLease>();
+const pendingPlaceholders = new Set<HTMLElement>();
+let pendingLoadObserver: IntersectionObserver | null = null;
 const imageElementLeases = new WeakMap<HTMLElement, ImageLoadLease>();
+const ownedPlaceholders = new WeakMap<HTMLElement, HTMLElement>();
+const ownedImages = new Set<HTMLElement>();
+let ownedImageObserver: IntersectionObserver | null = null;
+let ownedObserverResizeRaf = 0;
+let pendingSweepRaf = 0;
+
+function stopObservingPendingLoad(
+  placeholder: HTMLElement,
+  lease: ImageLoadLease,
+): void {
+  if (placeholderLeases.get(placeholder) !== lease) return;
+  pendingLoadObserver?.unobserve(placeholder);
+  pendingPlaceholders.delete(placeholder);
+}
+
+function cancelPendingLoad(placeholder: HTMLElement, reobserve: boolean): void {
+  const lease = placeholderLeases.get(placeholder);
+  pendingLoadObserver?.unobserve(placeholder);
+  pendingPlaceholders.delete(placeholder);
+  if (!lease) return;
+
+  // Detach ownership before releasing the shared task so its rejection cannot
+  // turn a deliberate off-screen cancellation into an automatic retry.
+  placeholderLeases.delete(placeholder);
+  delete placeholder.dataset.isFetching;
+  delete placeholder.dataset.lazyLoaded;
+  lease.release();
+
+  if (reobserve && placeholder.isConnected) lazyLoadObserver?.observe(placeholder);
+}
+
+function rebuildPendingLoadObserver(): void {
+  pendingLoadObserver?.disconnect();
+  const cancelDistance = Math.max(2000, Math.max(1, window.innerHeight) * 6);
+  pendingLoadObserver = new IntersectionObserver(entries => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) cancelPendingLoad(entry.target as HTMLElement, true);
+    }
+  }, { rootMargin: `${cancelDistance}px 0px ${cancelDistance}px 0px` });
+  pendingPlaceholders.forEach(placeholder => pendingLoadObserver?.observe(placeholder));
+}
+
+function observePendingLoad(placeholder: HTMLElement): void {
+  pendingPlaceholders.add(placeholder);
+  if (!pendingLoadObserver) rebuildPendingLoadObserver();
+  pendingLoadObserver?.observe(placeholder);
+}
+
+function cancelFarPendingLoads(): void {
+  if (document.documentElement.classList.contains('hr-reader-open')) return;
+  const cancelDistance = Math.max(2000, Math.max(1, window.innerHeight) * 6);
+  for (const placeholder of pendingPlaceholders) {
+    const rect = placeholder.getBoundingClientRect();
+    if (rect.bottom < -cancelDistance || rect.top > window.innerHeight + cancelDistance) {
+      cancelPendingLoad(placeholder, true);
+    }
+  }
+}
+
+window.addEventListener('scroll', () => {
+  cancelAnimationFrame(pendingSweepRaf);
+  pendingSweepRaf = requestAnimationFrame(cancelFarPendingLoads);
+}, { passive: true });
+
+function restoreOwnedImage(image: HTMLElement): void {
+  const placeholder = ownedPlaceholders.get(image);
+  const lease = imageElementLeases.get(image);
+  if (!placeholder || !lease || !image.parentNode) {
+    ownedImageObserver?.unobserve(image);
+    ownedImages.delete(image);
+    return;
+  }
+  delete placeholder.dataset.lazyLoaded;
+  delete placeholder.dataset.isFetching;
+  applyKnownImageGeometry(placeholder, {
+    width: Number(image.dataset.naturalWidth) || image.getBoundingClientRect().width,
+    height: Number(image.dataset.naturalHeight) || image.getBoundingClientRect().height,
+  });
+  ownedImageObserver?.unobserve(image);
+  ownedImages.delete(image);
+  image.parentNode.replaceChild(placeholder, image);
+  imageElementLeases.delete(image);
+  ownedPlaceholders.delete(image);
+  lease.release();
+  lazyLoadObserver?.observe(placeholder);
+}
+
+function rebuildOwnedImageObserver(): void {
+  ownedImageObserver?.disconnect();
+  const releaseDistance = Math.max(1, window.innerHeight) * 6;
+  ownedImageObserver = new IntersectionObserver(entries => {
+    if (document.documentElement.classList.contains('hr-reader-open')) return;
+    for (const entry of entries) {
+      if (!entry.isIntersecting) restoreOwnedImage(entry.target as HTMLElement);
+    }
+  }, { rootMargin: `${releaseDistance}px 0px ${releaseDistance}px 0px` });
+  ownedImages.forEach(image => ownedImageObserver?.observe(image));
+}
+
+function observeOwnedImage(image: HTMLElement): void {
+  ownedImages.add(image);
+  if (!ownedImageObserver) rebuildOwnedImageObserver();
+  ownedImageObserver?.observe(image);
+}
+
+window.addEventListener('resize', () => {
+  cancelAnimationFrame(ownedObserverResizeRaf);
+  ownedObserverResizeRaf = requestAnimationFrame(() => {
+    rebuildOwnedImageObserver();
+    rebuildPendingLoadObserver();
+  });
+}, { passive: true });
 
 function scheduleAutomaticRetry(placeholder: HTMLElement, pIndex: number, index: number): void {
   delete placeholder.dataset.isFetching;
@@ -61,11 +176,23 @@ export function loadPlaceholderImage(placeholder: HTMLElement): void {
 
   const pIndex = parseInt(placeholder.dataset.pIndex || '0', 10);
   const index = parseInt(placeholder.dataset.index || '0', 10);
-  const lease = acquireImage(url, { intent: 'scroll', priority: LOAD_PRIORITY.scroll });
+  const rect = placeholder.getBoundingClientRect();
+  const inViewport = rect.bottom >= 0 && rect.top <= window.innerHeight;
+  const nearViewport = rect.bottom >= -window.innerHeight * 2 && rect.top <= window.innerHeight * 3;
+  const lease = acquireImage(url, {
+    intent: inViewport ? 'foreground' : 'scroll',
+    priority: inViewport
+      ? LOAD_PRIORITY.foreground
+      : nearViewport
+        ? LOAD_PRIORITY.scroll
+        : LOAD_PRIORITY.scroll - 10,
+  });
   placeholderLeases.set(placeholder, lease);
+  observePendingLoad(placeholder);
 
   lease.result.then(asset => {
     if (placeholderLeases.get(placeholder) !== lease) return;
+    stopObservingPendingLoad(placeholder, lease);
     if (!asset) {
       scheduleAutomaticRetry(placeholder, pIndex, index);
       return;
@@ -73,7 +200,9 @@ export function loadPlaceholderImage(placeholder: HTMLElement): void {
 
     const img = document.createElement('img');
     img.className = 'r-img';
+    img.alt = `Page ${pIndex}-${index + 1}`;
     img.decoding = 'async';
+    img.fetchPriority = inViewport ? 'high' : nearViewport ? 'auto' : 'low';
     img.dataset.viewerUrl = url;
     if (placeholder.dataset.itemKey) img.dataset.itemKey = placeholder.dataset.itemKey;
     img.dataset.realSrc = asset.src;
@@ -93,6 +222,8 @@ export function loadPlaceholderImage(placeholder: HTMLElement): void {
       img.dataset.locked = 'true';
     };
     img.onerror = () => {
+      ownedImageObserver?.unobserve(img);
+      ownedImages.delete(img);
       imageElementLeases.get(img)?.release();
       imageElementLeases.delete(img);
       if (img.parentNode) img.parentNode.replaceChild(placeholder, img);
@@ -102,8 +233,13 @@ export function loadPlaceholderImage(placeholder: HTMLElement): void {
     img.src = asset.src;
     placeholder.parentNode?.replaceChild(img, placeholder);
     if (asset.ownsObjectUrl) {
+      img.dataset.ownsObjectUrl = 'true';
+      img.dataset.naturalWidth = String(asset.width);
+      img.dataset.naturalHeight = String(asset.height);
       placeholderLeases.delete(placeholder);
       imageElementLeases.set(img, lease);
+      ownedPlaceholders.set(img, placeholder);
+      observeOwnedImage(img);
     }
 
     const itemKey = placeholder.dataset.itemKey;
@@ -115,9 +251,11 @@ export function loadPlaceholderImage(placeholder: HTMLElement): void {
     }
   }).catch(() => {
     if (placeholderLeases.get(placeholder) !== lease) return;
+    stopObservingPendingLoad(placeholder, lease);
     scheduleAutomaticRetry(placeholder, pIndex, index);
   }).finally(() => {
     if (placeholderLeases.get(placeholder) === lease) {
+      stopObservingPendingLoad(placeholder, lease);
       placeholderLeases.delete(placeholder);
       lease.release();
     }
@@ -127,6 +265,7 @@ export function loadPlaceholderImage(placeholder: HTMLElement): void {
 function initLazyLoad() {
   if (lazyLoadObserver) return;
   lazyLoadObserver = new IntersectionObserver((entries) => {
+    if (document.documentElement.classList.contains('hr-reader-open')) return;
     entries.forEach(entry => {
       if (entry.isIntersecting) {
         const placeholder = entry.target as HTMLElement;
@@ -148,10 +287,16 @@ function initLazyLoad() {
 // resume re-observes every placeholder still awaiting load.
 export function pauseLazyLoad(): void {
   lazyLoadObserver?.disconnect();
+  // Reader foreground work must not wait behind scroll tasks that were started
+  // for a viewport the user has just left.
+  [...pendingPlaceholders].forEach(placeholder => cancelPendingLoad(placeholder, false));
 }
 
 export function resumeLazyLoad(): void {
   if (!lazyLoadObserver) return;
+  // Re-observing also releases owned images that became far away while the
+  // Reader froze page scrolling and suspended resource cleanup callbacks.
+  if (ownedImages.size > 0) rebuildOwnedImageObserver();
   document.querySelectorAll<HTMLElement>('.r-ph').forEach(ph => {
     if (!ph.dataset.lazyLoaded) lazyLoadObserver!.observe(ph);
   });
@@ -218,7 +363,8 @@ export function processBatch(items: GalleryItem[], pIndex: number, container?: H
     // Non-scroll mode shows images only through the reader (PhotoSwipe), which
     // resolves the current slide + directional neighbours on demand, so these
     // placeholders need no eager network work — that just bursts the limiter.
-    if (store.settings.scrollMode) {
+    if (store.settings.scrollMode
+        && !document.documentElement.classList.contains('hr-reader-open')) {
       lazyLoadObserver?.observe(placeholder);
     }
   });
@@ -233,33 +379,73 @@ export function processBatch(items: GalleryItem[], pIndex: number, container?: H
   }
 }
 
-export function setupAutoScroll(pageLoader: GalleryPageLoader): void {
+export function setupAutoScroll(pageLoader: GalleryPageLoader): () => void {
   const scrollSent = document.createElement('div');
   document.body.appendChild(scrollSent);
 
-  const pageObs = new IntersectionObserver((entries) => {
-    if (entries[0].isIntersecting && store.nextUrl && !store.isFetching) {
-      const requestedUrl = store.nextUrl;
-      store.isFetching = true;
-      pageLoader.loadPage(requestedUrl).then(page => {
-        if (!page) {
-          store.nextUrl = null;
-          pageObs.disconnect();
-          return;
-        }
-        store.currPage++;
-        processBatch(page.items, store.currPage, store.activeAdapter?.getContainer() || document.querySelector('.scroll-mode .entry-content, .scroll-mode .wp-block-post-content, .scroll-mode .post-content') as HTMLElement || document.body, false, page.pageUrl);
+  const errorSentinel = document.createElement('div');
+  errorSentinel.className = 'hr-pagination-error';
+  errorSentinel.hidden = true;
+  const errorText = document.createElement('span');
+  errorText.textContent = i18n.paginationFailed;
+  const retryButton = document.createElement('button');
+  retryButton.type = 'button';
+  retryButton.textContent = i18n.retry;
+  errorSentinel.append(errorText, retryButton);
+  scrollSent.before(errorSentinel);
 
-        store.nextUrl = page.nextUrl;
-        if (!store.nextUrl) pageObs.disconnect();
-      }).catch(err => {
-        if (err instanceof EmptyGalleryPageError) {
-          store.nextUrl = null;
-          pageObs.disconnect();
-        }
-      }).finally(() => { store.isFetching = false; });
+  const showError = () => {
+    errorSentinel.hidden = false;
+    pageObs.unobserve(scrollSent);
+  };
+
+  const hideError = () => {
+    errorSentinel.hidden = true;
+  };
+
+  async function loadNextPage(): Promise<void> {
+    if (!store.nextUrl || store.isFetching) return;
+    const requestedUrl = store.nextUrl;
+    store.isFetching = true;
+    hideError();
+    try {
+      const page = await pageLoader.loadPage(requestedUrl);
+      if (!page) {
+        store.nextUrl = null;
+        pageObs.disconnect();
+        return;
+      }
+      store.currPage++;
+      processBatch(page.items, store.currPage, store.activeAdapter?.getContainer() || document.querySelector('.scroll-mode .entry-content, .scroll-mode .wp-block-post-content, .scroll-mode .post-content') as HTMLElement || document.body, false, page.pageUrl);
+      store.nextUrl = page.nextUrl;
+      if (!store.nextUrl) pageObs.disconnect();
+    } catch (err) {
+      if (err instanceof EmptyGalleryPageError) {
+        store.nextUrl = null;
+        pageObs.disconnect();
+      } else {
+        console.error('[Hentai-Reader] Infinite pagination failed', err);
+        showError();
+      }
+    } finally {
+      store.isFetching = false;
     }
+  }
+
+  const pageObs = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting) void loadNextPage();
   }, { rootMargin: CFG.scrollPageRootMargin });
 
+  retryButton.addEventListener('click', () => {
+    hideError();
+    pageObs.observe(scrollSent);
+    void loadNextPage();
+  });
   pageObs.observe(scrollSent);
+  return () => {
+    pageObs.disconnect();
+    retryButton.replaceWith();
+    errorSentinel.remove();
+    scrollSent.remove();
+  };
 }

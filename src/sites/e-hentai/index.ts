@@ -18,8 +18,6 @@ function parseDocument(html: string): Document {
 const PAGE_FETCH_PRIORITY = LOAD_PRIORITY.pageHtml;
 const REQUEST_POLICY = {
   concurrent: 3,
-  prefetchAhead: 5,
-  prefetchBehind: 2,
   rateLimitCooldownMs: 5000,
   foregroundLoadTimeoutMs: 12_000,
   backgroundLoadTimeoutMs: 20_000,
@@ -52,11 +50,6 @@ function enforceRateLimit(response: Response): void {
 
 export const EHentaiAdapter: SiteAdapter = {
   name: 'E-Hentai/ExHentai',
-  readerPrefetch: {
-    ahead: REQUEST_POLICY.prefetchAhead,
-    behind: REQUEST_POLICY.prefetchBehind,
-  },
-
   match(url: string) {
     return /https?:\/\/(e-|ex)hentai\.org\/(g|s)\//.test(url);
   },
@@ -94,6 +87,7 @@ export const EHentaiAdapter: SiteAdapter = {
     return {
       src: viewer.src,
       ...(viewer.nl ? { retryToken: viewer.nl } : {}),
+      ...(viewer.dimensions ? { sourceDimensions: viewer.dimensions } : {}),
       loadTimeoutMs: context.priority >= LOAD_PRIORITY.foreground - 10
         ? REQUEST_POLICY.foregroundLoadTimeoutMs
         : REQUEST_POLICY.backgroundLoadTimeoutMs,
@@ -123,9 +117,12 @@ export const EHentaiAdapter: SiteAdapter = {
       '.ptt', '.ptb', '.gdtl', '.gdtm',
       '#gdo', '#cdiv', 'table.itg',
     ];
-    document.querySelectorAll<HTMLElement>(hiddenSelectors.join(',')).forEach(element => {
+    const elements = Array.from(document.querySelectorAll<HTMLElement>(hiddenSelectors.join(',')));
+    const displays = elements.map(element => element.style.display);
+    elements.forEach(element => {
       element.style.display = 'none';
     });
+    return () => elements.forEach((element, index) => { element.style.display = displays[index]; });
   },
 
   imageRequestQueue: {

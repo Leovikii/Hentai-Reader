@@ -27,8 +27,23 @@ export interface Comic18MaterializerDeps {
   fetchBlob(src: string, signal: AbortSignal): Promise<Blob>;
   createBitmap(blob: Blob): Promise<BitmapLike>;
   createCanvas(width: number, height: number): CanvasLike;
+  releaseCanvas?(canvas: CanvasLike): void;
   createObjectUrl(blob: Blob): string;
   getSegmentCount(aid: string, imageId: string): number | undefined;
+}
+
+const IMAGE_LOAD_TIMEOUT = {
+  foreground: 20_000,
+  background: 30_000,
+} as const;
+
+export function get18ComicImageLoadTimeout(
+  priority: number,
+  foregroundPriority = 100,
+): number {
+  return priority >= foregroundPriority - 10
+    ? IMAGE_LOAD_TIMEOUT.foreground
+    : IMAGE_LOAD_TIMEOUT.background;
 }
 
 function isMaterializeData(value: unknown): value is Comic18MaterializeData {
@@ -68,17 +83,20 @@ export async function materialize18ComicImage(
 ): Promise<ResolvedImage> {
   if (!isMaterializeData(resolved.materializeData)) return resolved;
 
+  const { aid, imageId } = resolved.materializeData;
+  const segments = deps.getSegmentCount(aid, imageId);
+  if (!segments) throw new Error('18comic segment count is unavailable');
+  // Avoid fetching and decoding sources that do not require rearrangement.
+  if (segments <= 1) return { src: resolved.src };
+
   const sourceBlob = await deps.fetchBlob(resolved.src, signal);
   if (signal.aborted) throw new DOMException('Materialization cancelled', 'AbortError');
   const bitmap = await deps.createBitmap(sourceBlob);
+  let canvas: CanvasLike | undefined;
 
   try {
-    const { aid, imageId } = resolved.materializeData;
-    const segments = deps.getSegmentCount(aid, imageId);
-    if (!segments) throw new Error('18comic segment count is unavailable');
-    if (segments <= 1) return { src: resolved.src };
-
-    const canvas = deps.createCanvas(bitmap.width, bitmap.height);
+    if (signal.aborted) throw new DOMException('Materialization cancelled', 'AbortError');
+    canvas = deps.createCanvas(bitmap.width, bitmap.height);
     const context = canvas.getContext('2d');
     if (!context) throw new Error('18comic 2D canvas context is unavailable');
 
@@ -120,8 +138,15 @@ export async function materialize18ComicImage(
 
     if (signal.aborted) throw new DOMException('Materialization cancelled', 'AbortError');
     const output = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
-    return { src: deps.createObjectUrl(output), ownsObjectUrl: true };
+    if (signal.aborted) throw new DOMException('Materialization cancelled', 'AbortError');
+    return {
+      src: deps.createObjectUrl(output),
+      ownsObjectUrl: true,
+      byteSize: output.size,
+      decodedDimensions: { width: bitmap.width, height: bitmap.height },
+    };
   } finally {
+    if (canvas) deps.releaseCanvas?.(canvas);
     bitmap.close();
   }
 }
@@ -137,6 +162,13 @@ export function create18ComicBrowserMaterializer(
     },
     createBitmap: blob => createImageBitmap(blob),
     createCanvas: (width, height) => new OffscreenCanvas(width, height) as unknown as CanvasLike,
+    releaseCanvas: canvas => {
+      const offscreen = canvas as unknown as OffscreenCanvas;
+      // Drop the potentially very large backing store as soon as export ends;
+      // waiting for GC allows consecutive chapter pages to overlap in memory.
+      offscreen.width = 1;
+      offscreen.height = 1;
+    },
     createObjectUrl: blob => URL.createObjectURL(blob),
     getSegmentCount,
   };

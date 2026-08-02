@@ -2,7 +2,7 @@ import './shell/reader.css';
 import type { GalleryPage } from '../core/gallery';
 import type { GalleryPageLoader } from '../core/gallery-page-loader';
 import { createPrefetchController } from './controllers/prefetch-controller';
-import { createWheelPager } from './controllers/wheel-pager';
+import { createWheelPager, getWheelPageLoadBehavior } from './controllers/wheel-pager';
 import { createAutoPlay } from './controllers/auto-play-controller';
 import { i18n } from '../utils/i18n';
 import { createReaderPaginationController, type ReaderPaginationController } from './controllers/pagination-controller';
@@ -18,9 +18,22 @@ import type {
 import { createReaderShell } from './shell/reader-shell';
 import { ReaderSession } from './reader-session';
 import { createThumbnailController } from './controllers/thumbnail-controller';
-import { acquireImage, getCachedImage } from '../services/image-load-runtime';
+import {
+  acquireImage,
+  getCachedImage,
+  getImageDimensionsHint,
+} from '../services/image-load-runtime';
 import { LOAD_PRIORITY } from '../state/load-policy';
 import type { ReaderPrefetchPolicy } from '../core/site-adapter';
+import {
+  createSpreadLayout,
+  formatSpreadCounter,
+  type ReaderSpread,
+  type SpreadLayout,
+  type SpreadPage,
+} from './controllers/spread-layout';
+import { createInteractionSettleScheduler } from './controllers/interaction-settle-scheduler';
+import { getReaderInputCapabilities } from '../utils/input-capabilities';
 
 export interface ReaderControllerDeps {
   pageLoader: GalleryPageLoader;
@@ -35,15 +48,32 @@ export interface ReaderControllerDeps {
 const RETURN_GEOMETRY_RADIUS = 5;
 
 export function createReaderController(deps: ReaderControllerDeps): ReaderHandle {
+  const inputCapabilities = getReaderInputCapabilities();
   let pswp: ReaderDriver | null = null;
   let isActive = false;
   let isReinitializing = false;
+  let reinitializationDepth = 0;
   let overflowSnapshot: { documentElement: string; body: string } | null = null;
   const session = new ReaderSession(deps.context.getGalleryItems);
+  let spreadLayout: SpreadLayout = createSpreadLayout([], { width: 1, height: 1 }, false);
   let onMobileInteractionStart = () => {};
   let onMobileInteractionEnd = () => {};
   let entryScrollY = 0;
   let entryItemKey = '';
+  let refreshActiveLayout = () => {};
+  let refreshActiveHud = () => {};
+  const failedLogicalIndices = new Set<number>();
+  const renderedFailedLogicalIndices = new Set<number>();
+
+  function startReinitializing(): void {
+    reinitializationDepth++;
+    isReinitializing = true;
+  }
+
+  function finishReinitializing(): void {
+    reinitializationDepth = Math.max(0, reinitializationDepth - 1);
+    isReinitializing = reinitializationDepth > 0;
+  }
 
   function itemKeyAt(index: number): string {
     const element = session.elementAt(index);
@@ -54,18 +84,63 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
       || '';
   }
 
+  function spreadPages(): SpreadPage[] {
+    return Array.from({ length: session.imageCount }, (_, index) => {
+      const item = session.itemAt(index);
+      const element = session.elementAt(index);
+      const cached = item && getCachedImage(item.viewerUrl);
+      const sourceHint = item && getImageDimensionsHint(item.viewerUrl);
+      let width = cached?.width ?? item?.dimensions?.width ?? sourceHint?.width;
+      let height = cached?.height ?? item?.dimensions?.height ?? sourceHint?.height;
+      const previewSize = item?.preview.kind === 'url'
+        ? item.preview.size
+        : item?.preview.kind === 'sprite'
+          ? item.preview.crop
+          : undefined;
+      if ((!width || !height) && previewSize?.width && previewSize.height) {
+        width = previewSize.width;
+        height = previewSize.height;
+      }
+      if ((!width || !height) && element?.tagName === 'IMG') {
+        const image = element as HTMLImageElement;
+        if (image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
+          width = image.naturalWidth;
+          height = image.naturalHeight;
+        }
+      }
+      return {
+        key: itemKeyAt(index) || `logical:${index}`,
+        width,
+        height,
+        failed: failedLogicalIndices.has(index),
+      };
+    });
+  }
+
+  function calculateSpreadLayout(preferredLogicalIndex = session.currentIndex): SpreadLayout {
+    return createSpreadLayout(
+      spreadPages(),
+      { width: window.innerWidth, height: window.innerHeight, gutter: 20 },
+      deps.context.isDoublePageModeEnabled(),
+      itemKeyAt(preferredLogicalIndex),
+    );
+  }
+
+  function currentSpread(): ReaderSpread | undefined {
+    return pswp ? spreadLayout.spreads[pswp.currentIndex] : undefined;
+  }
+
+  function activeLogicalIndices(): readonly number[] {
+    return currentSpread()?.logicalIndices ?? [session.currentIndex];
+  }
+
   // Sync the reader session with the live scroll placeholders/images.
   function syncImages(): void {
     const freshImages = Array.from(document.querySelectorAll('.r-img, .r-ph')) as HTMLElement[];
     if (session.syncImages(freshImages)) {
-      shell.update();
-      if (pswp) {
-        // Rebuild current + neighbour holders: a page-count growth can leave a
-        // pre-built empty holder that goTo would otherwise slide in as undefined.
-        const c = pswp.currentIndex;
-        for (let i = c - 1; i <= c + 1; i++) {
-          if (i >= 0 && i < session.imageCount) pswp.refreshSlide(i);
-        }
+      if (!pswp) {
+        spreadLayout = calculateSpreadLayout();
+        shell.update();
       }
     }
   }
@@ -78,9 +153,11 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
   const autoPlay = createAutoPlay(() => pswp?.next(), deps.context);
   let pagination: ReaderPaginationController;
   const shell = createReaderShell({
+    inputCapabilities,
     onIndexChange: index => {
       session.setCurrentIndex(index);
-      pswp?.goTo(index);
+      spreadLayout = spreadLayout.withPrimaryLogical(index);
+      pswp?.goTo(spreadLayout.spreadIndexForLogical(index));
       autoPlay.reset();
     },
     onScrollToBottom: () => pagination.loadNext(),
@@ -103,20 +180,19 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     prependPage: deps.onLoadPrevPage,
     syncImages,
     afterPrepend: itemCount => {
-      isReinitializing = true;
       session.prepend(itemCount);
       deps.context.setImageOffset(Math.max(0, deps.context.getImageOffset() - itemCount));
-      if (pswp) {
-        pswp.stopMotion();
-        pswp.goTo(session.currentIndex);
-      }
-      isReinitializing = false;
     },
     onPageAdded: direction => {
+      // A Gallery append can extend PhotoSwipe beyond what it previously
+      // considered the terminal slide. Route both append and prepend through
+      // the same idle-frame remap so stale out-of-range Content cannot become a
+      // permanently empty current holder.
+      refreshActiveLayout();
       prefetch.setWindow(session.currentIndex, direction === 'next' ? 1 : -1);
     },
     onLoading: () => shell.showStatus({ status: 'loading', text: i18n.downloading }),
-    onIdle: () => shell.hideStatus(),
+    onIdle: () => refreshActiveHud(),
     onError: () => shell.showStatus({ status: 'error', text: i18n.loadFailed }),
   }, deps.context);
 
@@ -133,25 +209,27 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     }
 
     let startIndex = startIdx ?? 0;
-    
-    // Calculate start index only if not provided explicitly
+
+    // Calculate start index only if not provided explicitly.
     if (startIdx === undefined) {
       if (deps.context.isScrollMode()) {
         let minDistance = Infinity;
-      session.snapshotImages().forEach((img, index) => {
-        const rect = img.getBoundingClientRect();
-        const viewportCenter = window.innerHeight / 2;
-        if (rect.top <= viewportCenter && rect.bottom >= viewportCenter) {
-          startIndex = index;
-          minDistance = -1;
-        } else if (minDistance !== -1) {
-          const distanceToCenter = rect.bottom < viewportCenter ? viewportCenter - rect.bottom : rect.top - viewportCenter;
-          if (distanceToCenter < minDistance) {
-            minDistance = distanceToCenter;
+        session.snapshotImages().forEach((img, index) => {
+          const rect = img.getBoundingClientRect();
+          const viewportCenter = window.innerHeight / 2;
+          if (rect.top <= viewportCenter && rect.bottom >= viewportCenter) {
             startIndex = index;
+            minDistance = -1;
+          } else if (minDistance !== -1) {
+            const distanceToCenter = rect.bottom < viewportCenter
+              ? viewportCenter - rect.bottom
+              : rect.top - viewportCenter;
+            if (distanceToCenter < minDistance) {
+              minDistance = distanceToCenter;
+              startIndex = index;
+            }
           }
-        }
-      });
+        });
       } else {
         startIndex = session.currentIndex;
       }
@@ -160,6 +238,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     entryScrollY = window.scrollY;
     entryItemKey = itemKeyAt(startIndex);
     session.reset(startIndex);
+    spreadLayout = calculateSpreadLayout(startIndex);
     isActive = true;
 
     overflowSnapshot = {
@@ -183,19 +262,39 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     // but the panel's scroll was reset on DOM detach — force it.
     shell.resetCentering();
 
-    initPhotoSwipe(startIndex);
+    try {
+      initPhotoSwipe(spreadLayout.spreadIndexForLogical(startIndex));
+    } catch (error) {
+      console.error('[Hentai-Reader] Reader initialization failed', error);
+      prefetch.clear();
+      isActive = false;
+      if (pswp) {
+        const failedDriver = pswp;
+        pswp = null;
+        try { failedDriver.destroy(); } catch {}
+      }
+      if (overflowSnapshot) {
+        document.documentElement.style.overflow = overflowSnapshot.documentElement;
+        document.body.style.overflow = overflowSnapshot.body;
+        overflowSnapshot = null;
+      }
+      document.documentElement.classList.remove('hr-reader-open');
+      if (deps.context.isScrollMode()) deps.scroll.resume();
+      deps.context.emitReaderModeChanged();
+      return;
+    }
 
     if (deps.context.isAutoPlayEnabled()) {
       autoPlay.start();
     }
   }
 
-  function initPhotoSwipe(startIndex: number) {
+  function initPhotoSwipe(startSpreadIndex: number) {
     let mobileUiTimeout: ReturnType<typeof setTimeout>;
+    const touchOnlyUi = inputCapabilities.touchOnlyUi;
     function triggerMobileUITimeout() {
-      const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-      if (!isTouchDevice) return;
       clearTimeout(mobileUiTimeout);
+      if (!touchOnlyUi) return;
       mobileUiTimeout = setTimeout(() => {
         pswp?.hideUi();
       }, 2000);
@@ -205,38 +304,60 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
       clearTimeout(mobileUiTimeout);
     }
 
+    function syncUiAvailabilityForCurrent(): void {
+      if (!pswp) return;
+      // On touch devices the status HUD is independent from PhotoSwipe's
+      // controls. Loading updates must not reveal or keep the controls and
+      // thumbnail panel awake; only an explicit tap does that.
+      if (touchOnlyUi) return;
+      if (!pswp.isCurrentContentLoaded()) {
+        cancelMobileUITimeout();
+        pswp.showUi();
+      }
+    }
+
     onMobileInteractionStart = cancelMobileUITimeout;
     onMobileInteractionEnd = triggerMobileUITimeout;
 
     function handleScreenClick(point: ScreenPoint, defaultCenterAction: 'zoom' | 'toggle') {
       const width = window.innerWidth;
       if (point.x < width * 0.3) {
-         if (pswp?.currentIndex === 0 && deps.context.getPrevUrl() && !deps.context.isPageFetching()) {
-            pagination.loadPrev();
-         } else {
-            pswp?.prev();
-         }
+        if (pswp?.currentIndex === 0 && deps.context.getPrevUrl() && !deps.context.isPageFetching()) {
+          pagination.loadPrev();
+        } else {
+          pswp?.prev();
+        }
       } else if (point.x > width * 0.7) {
-         if (pswp?.currentIndex === session.imageCount - 1 && deps.context.getNextUrl() && !deps.context.isPageFetching()) {
-            pagination.loadNext();
-         } else {
-            pswp?.next();
-         }
+        if (pswp?.currentIndex === spreadLayout.spreads.length - 1 && deps.context.getNextUrl() && !deps.context.isPageFetching()) {
+          pagination.loadNext();
+        } else {
+          pswp?.next();
+        }
       } else {
-         if (defaultCenterAction === 'zoom' && pswp?.canToggleCurrentZoom()) {
-            pswp.toggleCurrentZoom(point);
-         } else {
-            const isNowVisible = pswp?.toggleUi();
-            if (isNowVisible) triggerMobileUITimeout();
-         }
+        if (defaultCenterAction === 'zoom' && pswp?.canToggleCurrentZoom()) {
+          pswp.toggleCurrentZoom(point);
+        } else {
+          const isNowVisible = pswp?.toggleUi();
+          if (isNowVisible) triggerMobileUITimeout();
+        }
       }
     }
 
     pswp = deps.createDriver({
-      startIndex,
+      startIndex: startSpreadIndex,
       onBackgroundClick: point => handleScreenClick(point, 'toggle'),
       onImageClick: point => handleScreenClick(point, 'zoom'),
       onTap: point => handleScreenClick(point, 'toggle'),
+      onRenderedImageStateChange: ({ logicalIndex, state }) => {
+        if (state === 'error') renderedFailedLogicalIndices.add(logicalIndex);
+        else renderedFailedLogicalIndices.delete(logicalIndex);
+        if (!activeLogicalIndices().includes(logicalIndex)) return;
+        refreshHudForCurrent();
+        syncUiAvailabilityForCurrent();
+        if (state === 'loaded'
+            && deps.context.isAutoPlayEnabled()
+            && pswp?.isCurrentContentLoaded()) autoPlay.start();
+      },
     });
 
     // PhotoSwipe's vertical-drag-to-close only fires when currZoomLevel <= fit.
@@ -255,7 +376,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     const unsubscribeImageLoaded = deps.scroll.subscribeImageLoaded(({ index, element }) => {
       session.replaceImage(index, element);
       if (pswp && index >= 0 && index < session.imageCount) {
-        pswp.refreshSlide(index);
+        refreshSpreadLayout(session.currentIndex, index);
       }
     });
     pswp.on('destroy', () => {
@@ -276,47 +397,190 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     }
 
     const imageController = createReaderImageController(session, {
-      getCurrentIndex: () => pswp?.currentIndex ?? session.currentIndex,
-      getSlideContentState: index => pswp?.getSlideContentState(index),
-      refreshSlide: index => pswp?.refreshSlide(index),
+      getCurrentIndex: () => session.currentIndex,
+      getActiveIndices: activeLogicalIndices,
+      getSlideContentState: index => pswp?.getSlideContentState(spreadLayout.spreadIndexForLogical(index)),
       onPhaseChange: (index, phase) => {
-        if (pswp?.currentIndex === index) showImagePhase(phase);
+        const isActiveIndex = activeLogicalIndices().includes(index);
+        const wasFailed = failedLogicalIndices.has(index);
+        if (phase === 'error') failedLogicalIndices.add(index);
+        else if (phase === 'loaded') failedLogicalIndices.delete(index);
+        if (wasFailed !== failedLogicalIndices.has(index)) refreshActiveLayout();
+        // A resolver may publish reliable source dimensions before byte load
+        // completes (E-Hentai hath metadata). Re-evaluate the stable pair while
+        // keeping the pending slot and the already visible member in place.
+        if (phase === 'downloading') refreshSpreadLayout(session.currentIndex, index);
+        if (isActiveIndex) refreshHudForCurrent();
       },
       onAssetReady: index => {
-        if (pswp?.currentIndex === index && deps.context.isAutoPlayEnabled()) autoPlay.start();
+        const isActiveIndex = activeLogicalIndices().includes(index);
+        refreshSpreadLayout(session.currentIndex, index);
+        refreshHudForCurrent();
+        if (isActiveIndex) syncUiAvailabilityForCurrent();
+        if (isActiveIndex
+            && deps.context.isAutoPlayEnabled()
+            && pswp?.isCurrentContentLoaded()) autoPlay.start();
       },
     });
+
+    let resizeRaf = 0;
+    let pendingLayoutRequest = {
+      preferredLogicalIndex: session.currentIndex,
+      refreshLogicalIndex: session.currentIndex,
+    };
+
+    const layoutSettleScheduler = createInteractionSettleScheduler({
+      isBlocked: () => pswp?.isInteracting() ?? false,
+      onBlocked: () => {
+        // Transition feedback is independent from structural refresh. Render it
+        // once; the status HUD itself deduplicates equivalent updates.
+        showImagePhase('downloading');
+      },
+      onSettled: applyPendingSpreadLayout,
+    });
+
+    function refreshSpreadLayout(
+      preferredLogicalIndex = session.currentIndex,
+      refreshLogicalIndex = preferredLogicalIndex,
+    ): void {
+      if (!pswp) return;
+      pendingLayoutRequest = {
+        preferredLogicalIndex,
+        refreshLogicalIndex,
+      };
+      layoutSettleScheduler.request();
+    }
+
+    function applyPendingSpreadLayout(): void {
+      if (!pswp) return;
+      const {
+        preferredLogicalIndex,
+        refreshLogicalIndex,
+      } = pendingLayoutRequest;
+      const previousKeys = spreadLayout.spreads.map(spread => spread.key).join('|');
+      const next = calculateSpreadLayout(preferredLogicalIndex);
+      const nextKeys = next.spreads.map(spread => spread.key).join('|');
+      spreadLayout = next;
+      const targetSpread = spreadLayout.spreadIndexForLogical(preferredLogicalIndex);
+      if (targetSpread < 0) return;
+      if (previousKeys !== nextKeys) {
+        // Keep the PhotoSwipe root, shell, listeners, gestures and current
+        // pixels alive. The driver remaps its three holders atomically and
+        // patches compatible spread DOM in place, avoiding a full-screen flash.
+        startReinitializing();
+        try {
+          session.setCurrentIndex(preferredLogicalIndex, false);
+          pswp.syncLayout(targetSpread);
+          shell.update();
+        } finally {
+          finishReinitializing();
+          refreshHudForCurrent();
+        }
+        return;
+      }
+      if (pswp.currentIndex !== targetSpread) {
+        startReinitializing();
+        try {
+          pswp.stopMotion();
+          pswp.goTo(targetSpread);
+          shell.update();
+        } finally {
+          queueMicrotask(() => {
+            finishReinitializing();
+            refreshHudForCurrent();
+          });
+        }
+      } else {
+        const refreshSpread = spreadLayout.spreadIndexForLogical(refreshLogicalIndex);
+        if (refreshSpread >= 0) {
+          pswp.refreshSlide(refreshSpread);
+          refreshHudForCurrent();
+          syncUiAvailabilityForCurrent();
+        }
+      }
+    }
+    refreshActiveLayout = () => refreshSpreadLayout(session.currentIndex);
+
+    const onResize = () => {
+      cancelAnimationFrame(resizeRaf);
+      resizeRaf = requestAnimationFrame(() => refreshSpreadLayout(session.currentIndex));
+    };
+    window.addEventListener('resize', onResize, { passive: true });
 
     function refreshHudForCurrent(): void {
       if (!pswp) return;
-      showImagePhase(imageController.getPhase(pswp.currentIndex));
+      const activeIndices = activeLogicalIndices();
+      if (activeIndices.some(index => renderedFailedLogicalIndices.has(index))) {
+        showImagePhase('error');
+        return;
+      }
+      const phases = activeIndices.map(index => imageController.getPhase(index));
+      const phase = phases.includes('error')
+        ? 'error'
+        : phases.includes('resolving')
+          ? 'resolving'
+          : phases.includes('switching-source')
+            ? 'switching-source'
+            : phases.includes('downloading')
+              ? 'downloading'
+              : 'loaded';
+      showImagePhase(phase === 'loaded' && !pswp.isCurrentContentLoaded()
+        ? 'downloading'
+        : phase);
     }
+    refreshActiveHud = refreshHudForCurrent;
 
-    pswp.on('destroy', () => imageController.dispose());
+    pswp.on('destroy', () => {
+      cancelAnimationFrame(resizeRaf);
+      layoutSettleScheduler.cancel();
+      window.removeEventListener('resize', onResize);
+      refreshActiveLayout = () => {};
+      refreshActiveHud = () => {};
+      imageController.dispose();
+    });
     pswp.on('contentLoadImage', (e: any) => {
-      if (typeof e.content?.index === 'number') imageController.handleContentLoad(e.content.index);
+      if (typeof e.content?.index === 'number') {
+        const logicalIndex = spreadLayout.logicalIndexForSpread(e.content.index);
+        if (logicalIndex >= 0) imageController.handleContentLoad(logicalIndex);
+      }
     });
     pswp.on('loadComplete', (e: any) => {
       if (typeof e.content?.index === 'number') {
-        imageController.handleLoadComplete(e.content.index, e.isError);
+        const logicalIndex = spreadLayout.logicalIndexForSpread(e.content.index);
+        if (logicalIndex >= 0) imageController.handleLoadComplete(logicalIndex, e.isError);
       }
     });
 
     pswp.on('numItems', (e) => {
-      e.numItems = session.imageCount;
+      e.numItems = spreadLayout.spreads.length;
     });
 
     pswp.on('itemData', (e) => {
-      e.itemData = imageController.getItemData(e.index) as any;
+      const spread = spreadLayout.spreads[e.index];
+      if (!spread) {
+        e.itemData = { src: '', w: 1, h: 1 } as any;
+      } else {
+        // Use one stable HTML spread wrapper for both single and double pages.
+        // A late second-page size/source can then be inserted without replacing
+        // the current slide or flashing its already visible first image.
+        e.itemData = imageController.getSpreadItemData(
+          spread.logicalIndices,
+          spread.width,
+          spread.height,
+        ) as any;
+      }
     });
 
     const wheelPager = createWheelPager({
-      getCurrentIndex: () => pswp?.currentIndex ?? session.currentIndex,
+      getCurrentIndex: () => pswp?.currentIndex ?? 0,
       isCurrentZoomed: () => pswp?.isCurrentZoomed() ?? false,
       goTo: index => pswp?.goTo(index),
       stopMotion: () => pswp?.stopMotion(),
-      getImageCount: () => session.imageCount,
-      isPageLoading: index => imageController.isLoading(index),
+      getImageCount: () => spreadLayout.spreads.length,
+      getPageLoadBehavior: index => getWheelPageLoadBehavior(
+        spreadLayout.spreads[index]?.logicalIndices ?? [],
+        logical => imageController.isLoading(logical),
+      ),
       onEdgeForward: () => { if (deps.context.getNextUrl() && !deps.context.isPageFetching()) pagination.loadNext(); },
       onEdgeBackward: () => { if (deps.context.getPrevUrl() && !deps.context.isPageFetching()) pagination.loadPrev(); },
     });
@@ -327,43 +591,48 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
         return;
       }
       if (pswp) {
-        const previousIndex = session.lastIndex;
-        const isNavigatingBackwards = pswp.currentIndex < previousIndex;
-        session.setCurrentIndex(pswp.currentIndex);
+        const previousIndex = session.currentIndex;
+        const nextLogicalIndex = spreadLayout.logicalIndexForSpread(pswp.currentIndex);
+        const isNavigatingBackwards = nextLogicalIndex < previousIndex;
+        session.setCurrentIndex(nextLogicalIndex);
         shell.update();
         pagination.checkNearEnd();
 
         refreshHudForCurrent();
+        syncUiAvailabilityForCurrent();
 
-        // Only trigger prev page load if we are actively navigating backwards near the edge, 
+        // Only trigger prev page load if we are actively navigating backwards near the edge,
         // or if we literally hit the absolute 0 index while trying to go back.
         if (session.currentIndex <= 3 && deps.context.getPrevUrl() && session.hasNavigated && isNavigatingBackwards) {
           pagination.loadPrev();
         }
         if (deps.context.isAutoPlayEnabled()) {
-           autoPlay.stop();
-           // Reached the last image with no further page to load — stop instead
-           // of leaving the interval spinning on a no-op next().
-           if (pswp.currentIndex >= session.imageCount - 1 && !deps.context.getNextUrl()) {
-             autoPlay.stopAtEnd();
-           } else {
-             if (pswp.isCurrentContentLoaded()) {
-               autoPlay.start();
-             }
-           }
+          autoPlay.stop();
+          // Reached the last image with no further page to load — stop instead
+          // of leaving the interval spinning on a no-op next().
+          if (pswp.currentIndex >= spreadLayout.spreads.length - 1 && !deps.context.getNextUrl()) {
+            autoPlay.stopAtEnd();
+          } else if (pswp.isCurrentContentLoaded()) {
+            autoPlay.start();
+          }
         }
+
+        // A destination may have been cached as a pending or empty Content.
+        // Once the transition settles, reconcile the exact current holder even
+        // when no new network completion event fires.
+        refreshSpreadLayout(session.currentIndex, session.currentIndex);
 
         // Byte-prefetch a small window in the travel direction (and release
         // downloads left behind, including everything skipped by a panel jump).
-        prefetch.setWindow(pswp.currentIndex, isNavigatingBackwards ? -1 : 1);
-        imageController.releaseOutside(pswp.currentIndex);
+        prefetch.setWindow(session.currentIndex, isNavigatingBackwards ? -1 : 1);
+        imageController.releaseOutside(session.currentIndex);
       }
     });
 
     pswp.on('uiRegister', () => {
       if (!pswp) return;
       const unmountShell = shell.mount(pswp, index =>
-        `${deps.context.getImageOffset() + index + 1} / ${deps.context.getImageOffset() + session.imageCount}`,
+        formatSpreadCounter(spreadLayout.spreads[index], deps.context.getImageOffset(), session.imageCount),
       );
       const removeWheel = pswp.installWheel(event => wheelPager.onWheel(event));
       const removeEdgeSwipe = pswp.installEdgeSwipe({
@@ -373,7 +642,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
           }
         },
         onForward: () => {
-          if (pswp?.currentIndex === session.imageCount - 1
+          if (pswp?.currentIndex === spreadLayout.spreads.length - 1
               && deps.context.getNextUrl() && !deps.context.isPageFetching()) {
             pagination.loadNext();
           }
@@ -390,18 +659,26 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     pswp.on('close', () => {
       close();
     });
+    pswp.on('pointerUp', () => {
+      // Pointer release may end a drag without changing pages. If a source
+      // completed during that gesture, resume its coalesced holder refresh.
+      refreshSpreadLayout(session.currentIndex, session.currentIndex);
+    });
 
     pswp.init();
+    refreshHudForCurrent();
+    syncUiAvailabilityForCurrent();
 
     // Seed the prefetch window on the opening image (no `change` fires on init),
     // so the next few pages start downloading during the first dwell.
-    prefetch.setWindow(startIndex, 1);
+    prefetch.setWindow(session.currentIndex, 1);
   }
 
   function close(): void {
+    if (!isActive) return;
+    isActive = false;
     autoPlay.stop();
     deps.context.setAutoPlayEnabled(false);
-    isActive = false;
 
     prefetch.clear();
 
@@ -469,8 +746,9 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
 
   deps.context.subscribeSettingsChanged(() => {
     if (!isActive) return;
+    refreshActiveLayout();
     if (deps.context.isAutoPlayEnabled()) {
-       autoPlay.start();
+      autoPlay.start();
     } else {
       autoPlay.stop();
     }
@@ -480,12 +758,12 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     if (!isActive || !pswp) return;
     const el = document.querySelector('.pswp__counter');
     if (el) {
-      el.innerHTML = `${deps.context.getImageOffset() + pswp.currentIndex + 1} / ${deps.context.getImageOffset() + session.imageCount}`;
+      el.innerHTML = formatSpreadCounter(currentSpread(), deps.context.getImageOffset(), session.imageCount);
     }
   });
 
   function warmupInitial(count: number): void {
-    if (isActive) return;  // already open, warmup is redundant
+    if (isActive) return; // already open, warmup is redundant
     // Seed the session from the DOM so the prefetch controller can resolve
     // indices → URLs. This matches open()'s logic, which re-reads anyway.
     session.syncImages(Array.from(document.querySelectorAll('.r-img, .r-ph')) as HTMLElement[]);

@@ -1,12 +1,24 @@
 import PhotoSwipe from 'photoswipe';
 import type { ReaderDriver, ReaderDriverOptions, ScreenPoint } from '../contracts';
+import {
+  getSpreadImageRenderState,
+  getPhotoSwipeHolderPosition,
+  getSpreadMouseClickAction,
+  reconcilePhotoSwipeHolder,
+  shouldRetainMountedSpreadImage,
+  shouldHandleSpreadMouseClick,
+  shouldRetrySpreadImage,
+} from './photoswipe-holder';
 
-export type { ScreenPoint } from '../contracts';
-
-export class PhotoSwipeDriver implements ReaderDriver {
+class PhotoSwipeDriver implements ReaderDriver {
   private readonly instance: PhotoSwipe;
+  private readonly slidesByHolder = new WeakMap<HTMLElement, any>();
+  private readonly renderedImageBindings = new WeakMap<HTMLImageElement, string>();
+  private readonly renderedImageRetryAttempts = new Map<string, number>();
+  private readonly renderedImageRetryPending = new Set<string>();
+  private readonly renderedImageRetryTimers = new Set<ReturnType<typeof setTimeout>>();
 
-  constructor(options: ReaderDriverOptions) {
+  constructor(private readonly options: ReaderDriverOptions) {
     this.instance = new PhotoSwipe({
       index: options.startIndex,
       counter: false,
@@ -39,6 +51,69 @@ export class PhotoSwipeDriver implements ReaderDriver {
       imageClickAction: (point: any) => options.onImageClick(point),
       tapAction: (point: any) => options.onTap(point),
     });
+
+    // Reader spreads remain opaque to PhotoSwipe outside this driver. Convert
+    // the Reader-owned description into HTML content only at the integration
+    // boundary, so two independently cached images share one zoom wrapper.
+    this.instance.addFilter('itemData', (itemData: any, index: number) => {
+      if (!Array.isArray(itemData.hrSpread)) return itemData;
+      const escape = (value: string) => value
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      const fetchPriority = index === this.instance.currIndex ? 'high' : 'low';
+      const images = itemData.hrSpread.map((page: any) => page.src
+        ? `<img class="hr-reader-spread__page" data-logical-index="${Number(page.index)}" src="${escape(page.src)}" alt="${escape(page.alt || '')}" decoding="async" fetchpriority="${fetchPriority}">`
+        : `<span class="hr-reader-spread__page hr-reader-spread__page--pending" data-logical-index="${Number(page.index)}" aria-hidden="true"></span>`
+      ).join('');
+      return {
+        ...itemData,
+        type: 'html',
+        html: `<div class="hr-reader-spread" data-reader-spread>${images}</div>`,
+      };
+    });
+    this.instance.addFilter('isContentZoomable', (zoomable: boolean, content: any) => (
+      Array.isArray(content?.data?.hrSpread) ? true : zoomable
+    ));
+    this.instance.on('afterSetContent', ({ slide }: any) => {
+      const holderElement = slide?.holderElement as HTMLElement | undefined;
+      if (!holderElement) return;
+      reconcilePhotoSwipeHolder(holderElement, slide, this.slidesByHolder.get(holderElement));
+      this.slidesByHolder.set(holderElement, slide);
+      this.bindSpreadImages(slide);
+    });
+    this.instance.on('bindEvents', () => {
+      const root = this.instance.element;
+      if (!root) return;
+      let lastPointerType = '';
+      const onPointerDown = (event: PointerEvent) => {
+        lastPointerType = event.pointerType;
+      };
+      const onClick = (event: MouseEvent) => {
+        const pointerType = (event as PointerEvent).pointerType || lastPointerType;
+        lastPointerType = '';
+        // Touch taps already use PhotoSwipe's tapAction. Only fill the mouse
+        // classification gap, and preserve its post-drag click suppression.
+        if (!shouldHandleSpreadMouseClick(pointerType, event.defaultPrevented, event.button)) return;
+        const action = getSpreadMouseClickAction(
+          event.target as Element | null,
+          root.classList.contains('pswp--ui-visible'),
+        );
+        if (!action) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const point = { x: event.clientX, y: event.clientY };
+        if (action === 'image') options.onImageClick(point);
+        else options.onBackgroundClick(point);
+      };
+      root.addEventListener('pointerdown', onPointerDown);
+      root.addEventListener('click', onClick);
+      this.instance.on('destroy', () => {
+        root.removeEventListener('pointerdown', onPointerDown);
+        root.removeEventListener('click', onClick);
+      });
+    });
   }
 
   get currentIndex(): number {
@@ -49,12 +124,110 @@ export class PhotoSwipeDriver implements ReaderDriver {
     this.instance.on(event as any, listener as any);
   }
 
-  init(): void { this.instance.init(); }
-  destroy(): void { this.instance.destroy(); }
+  init(): void {
+    this.instance.init();
+    this.instance.element?.setAttribute('aria-label', 'Image reader');
+  }
+  destroy(): void {
+    this.renderedImageRetryTimers.forEach(timer => clearTimeout(timer));
+    this.renderedImageRetryTimers.clear();
+    this.renderedImageRetryPending.clear();
+    this.instance.destroy();
+  }
   next(): void { this.instance.next(); }
   prev(): void { this.instance.prev(); }
   goTo(index: number): void { this.instance.goTo(index); }
-  refreshSlide(index: number): void { this.instance.refreshSlideContent(index); }
+  refreshSlide(index: number): void {
+    const instance = this.instance as any;
+    const holders: any[] = instance.mainScroll?.itemHolders ?? [];
+    const holderPosition = getPhotoSwipeHolderPosition(
+      this.instance.currIndex,
+      index,
+      holders.length,
+    );
+
+    // Off-screen data only needs its cache entry invalidated. PhotoSwipe's
+    // public indexed refresh would infer a holder from currSlide, whose
+    // reference may be stale while PhotoSwipe rotates the three holders.
+    if (holderPosition === null) {
+      instance.contentLoader?.removeByIndex?.(index);
+      return;
+    }
+
+    const holder = holders[holderPosition];
+    const itemData = instance.getItemData(index);
+    if (holder?.slide?.index === index && this.patchSpreadSlide(holder.slide, itemData)) return;
+
+    // Rebuild the exact stable holder when its Slide or Spread DOM is missing.
+    // This avoids destroying one holder and accidentally repopulating another.
+    instance.contentLoader?.removeByIndex?.(index);
+    instance.setContent(holder, index, true);
+    if (index === this.instance.currIndex) {
+      instance.currSlide = holder.slide;
+      holder.slide?.setIsActive?.(true);
+    }
+  }
+
+  syncLayout(index: number): void {
+    const instance = this.instance as any;
+
+    // PhotoSwipe's goTo is synchronous when no animation flag is supplied.
+    // The Reader only calls this after two consecutive idle frames. Do not
+    // forcibly stop PhotoSwipe animations here: doing so can freeze a vertical
+    // close rebound with a translated zoom-wrap and a translucent background.
+    // Reconcile all three holders against the newly published mapping in place.
+    this.instance.goTo(index);
+    const itemCount = this.instance.getNumItems();
+    const holders: any[] = instance.mainScroll?.itemHolders ?? [];
+    for (let holderIndex = 0; holderIndex < holders.length; holderIndex++) {
+      const holder = holders[holderIndex];
+      const expectedIndex = this.instance.currIndex - 1 + holderIndex;
+      if (expectedIndex < 0 || expectedIndex >= itemCount) {
+        if (holder.slide) instance.setContent(holder, expectedIndex, true);
+        continue;
+      }
+
+      if (holder.slide?.index !== expectedIndex) {
+        instance.setContent(holder, expectedIndex, true);
+      }
+      const slide = holder.slide;
+      if (slide && !this.patchSpreadSlide(slide, instance.getItemData(expectedIndex))) {
+        instance.setContent(holder, expectedIndex, true);
+      }
+    }
+
+    instance.currSlide = holders[1]?.slide;
+    const visibleContents = new Set(holders.map(holder => holder.slide?.content).filter(Boolean));
+    const cachedItems: any[] = [...(instance.contentLoader?._cachedItems ?? [])];
+    for (const content of cachedItems) {
+      if (visibleContents.has(content)) continue;
+      const staleSlide = content.slide;
+      if (staleSlide?.container?.parentElement) staleSlide.destroy();
+      content.destroy();
+      instance.contentLoader?.removeByIndex?.(content.index);
+    }
+
+    this.instance.element?.classList.toggle('pswp--one-slide', itemCount === 1);
+    this.instance.updateSize(true);
+    instance.contentLoader?.updateLazy?.();
+    this.instance.dispatch('change');
+  }
+
+  isInteracting(): boolean {
+    const instance = this.instance as any;
+    const activeAnimations: any[] = instance.animations?.activeAnimations ?? [];
+    // Only holder-moving animations make an in-place spread patch unsafe.
+    // Counting every PhotoSwipe animation can leave Reader refreshes blocked by
+    // an unrelated/opening CSS transition that a host script has disturbed.
+    return !!instance.gestures?.isDragging
+      || !!instance.gestures?.isZooming
+      || !!instance.mainScroll?.isShifted?.()
+      || !!instance.opener?.isOpening
+      || !!instance.opener?.isClosing
+      || activeAnimations.some(animation => (
+        !!animation?.props?.isMainScroll || !!animation?.props?.isPan
+      ));
+  }
 
   stopMotion(): void {
     (this.instance as any).mainScroll?.stop?.();
@@ -67,7 +240,34 @@ export class PhotoSwipeDriver implements ReaderDriver {
   }
 
   isCurrentContentLoaded(): boolean {
-    return this.instance.currSlide?.content?.state === 'loaded';
+    const instance = this.instance as any;
+    const holders: any[] = instance.mainScroll?.itemHolders ?? [];
+    const holderPosition = getPhotoSwipeHolderPosition(
+      this.instance.currIndex,
+      this.instance.currIndex,
+      holders.length,
+    );
+    const holder = holderPosition === null ? undefined : holders[holderPosition];
+    const slide = holder?.slide;
+    if (!slide || slide.index !== this.instance.currIndex) return false;
+    if (slide.container?.parentElement !== holder.el) return false;
+
+    const content: any = slide.content;
+    if (Array.isArray(content?.data?.hrSpread)) {
+      if (!content.data.hrSpread.every((page: any) => !!page.src)) return false;
+      const root = slide.container?.querySelector?.('[data-reader-spread]') as HTMLElement | null;
+      if (!root) return false;
+      const images = new Map<number, HTMLImageElement>();
+      root.querySelectorAll<HTMLImageElement>('img.hr-reader-spread__page').forEach(image => {
+        images.set(Number(image.dataset.logicalIndex), image);
+      });
+      return content.data.hrSpread.every((page: any) => {
+        const image = images.get(Number(page.index));
+        return !!image?.getAttribute('src')
+          && getSpreadImageRenderState(image) === 'loaded';
+      });
+    }
+    return content?.state === 'loaded';
   }
 
   isCurrentZoomed(): boolean {
@@ -89,6 +289,10 @@ export class PhotoSwipeDriver implements ReaderDriver {
 
   toggleCurrentZoom(point: ScreenPoint): void {
     this.instance.currSlide?.toggleZoom(point);
+  }
+
+  showUi(): void {
+    this.instance.element?.classList.add('pswp--ui-visible');
   }
 
   hideUi(): void {
@@ -167,6 +371,152 @@ export class PhotoSwipeDriver implements ReaderDriver {
       root.removeEventListener('touchstart', onStart);
       root.removeEventListener('touchend', onEnd);
     };
+  }
+
+  /**
+   * Patch a stable single/double spread wrapper without detaching the current
+   * slide. Existing image nodes (and their decoded pixels) are preserved when
+   * their source is unchanged.
+   */
+  private patchSpreadSlide(slide: any, itemData: any): boolean {
+    if (!Array.isArray(slide?.content?.data?.hrSpread)
+        || !Array.isArray(itemData?.hrSpread)) return false;
+    const root = slide.content.element?.querySelector?.('[data-reader-spread]') as HTMLElement | null;
+    if (!root) return false;
+
+    const existing = new Map<number, HTMLElement>();
+    root.querySelectorAll<HTMLElement>('[data-logical-index]').forEach(element => {
+      existing.set(Number(element.dataset.logicalIndex), element);
+    });
+
+    for (const page of itemData.hrSpread) {
+      const logicalIndex = Number(page.index);
+      const current = existing.get(logicalIndex);
+      let next: HTMLElement;
+      if (page.src) {
+        const image = current?.tagName === 'IMG'
+          ? current as HTMLImageElement
+          : document.createElement('img');
+        this.configureSpreadImage(image, page, slide);
+        next = image;
+      } else if (shouldRetainMountedSpreadImage(
+        current?.tagName,
+        current?.getAttribute('src'),
+      )) {
+        // A Gallery remap or cache lease transition may briefly publish an
+        // empty src for the same logical page. Preserve its already visible
+        // image instead of regressing the current spread to a pending spinner.
+        next = current!;
+      } else {
+        const pending = current?.tagName === 'SPAN'
+          ? current
+          : document.createElement('span');
+        pending.className = 'hr-reader-spread__page hr-reader-spread__page--pending';
+        pending.dataset.logicalIndex = String(logicalIndex);
+        pending.setAttribute('aria-hidden', 'true');
+        next = pending;
+      }
+
+      if (current && current !== next) current.replaceWith(next);
+      root.appendChild(next);
+      existing.delete(logicalIndex);
+    }
+    existing.forEach(element => element.remove());
+
+    slide.data = itemData;
+    slide.content.data = itemData;
+    slide.content.width = Number(itemData.w) || 1;
+    slide.content.height = Number(itemData.h) || 1;
+    slide.width = slide.content.width;
+    slide.height = slide.content.height;
+    slide.zoomLevels.itemData = itemData;
+    slide.resize();
+    return true;
+  }
+
+  private bindSpreadImages(slide: any): void {
+    const pages = slide?.content?.data?.hrSpread;
+    const root = slide?.content?.element?.querySelector?.('[data-reader-spread]') as HTMLElement | null;
+    if (!Array.isArray(pages) || !root) return;
+    const byIndex = new Map<number, HTMLImageElement>();
+    root.querySelectorAll<HTMLImageElement>('img.hr-reader-spread__page').forEach(image => {
+      byIndex.set(Number(image.dataset.logicalIndex), image);
+    });
+    for (const page of pages) {
+      const image = byIndex.get(Number(page.index));
+      if (image && page.src) this.configureSpreadImage(image, page, slide);
+    }
+  }
+
+  private configureSpreadImage(image: HTMLImageElement, page: any, slide: any): void {
+    const logicalIndex = Number(page.index);
+    const src = String(page.src || '');
+    const bindingKey = `${logicalIndex}\u0000${src}`;
+    image.className = 'hr-reader-spread__page';
+    image.dataset.logicalIndex = String(logicalIndex);
+    image.alt = page.alt || '';
+    image.decoding = 'async';
+    image.fetchPriority = slide.index === this.instance.currIndex ? 'high' : 'low';
+
+    if (this.renderedImageBindings.get(image) !== bindingKey) {
+      this.renderedImageBindings.set(image, bindingKey);
+      image.onload = () => {
+        if (this.renderedImageBindings.get(image) !== bindingKey) return;
+        this.publishRenderedImageState(logicalIndex, 'loaded');
+      };
+      image.onerror = () => {
+        if (this.renderedImageBindings.get(image) !== bindingKey) return;
+        this.handleSpreadImageError(image, page, slide, bindingKey);
+      };
+    }
+
+    if (image.getAttribute('src') !== src) {
+      this.publishRenderedImageState(logicalIndex, 'loading');
+      image.src = src;
+      return;
+    }
+
+    const state = getSpreadImageRenderState(image);
+    if (state === 'error') this.handleSpreadImageError(image, page, slide, bindingKey);
+    else this.publishRenderedImageState(logicalIndex, state);
+  }
+
+  private handleSpreadImageError(
+    image: HTMLImageElement,
+    page: any,
+    slide: any,
+    bindingKey: string,
+  ): void {
+    const logicalIndex = Number(page.index);
+    const attempts = this.renderedImageRetryAttempts.get(bindingKey) ?? 0;
+    if (this.renderedImageRetryPending.has(bindingKey)) {
+      this.publishRenderedImageState(logicalIndex, 'loading');
+      return;
+    }
+    if (!shouldRetrySpreadImage(attempts, slide.index === this.instance.currIndex)) {
+      this.publishRenderedImageState(logicalIndex, 'error');
+      return;
+    }
+
+    this.renderedImageRetryAttempts.set(bindingKey, attempts + 1);
+    this.renderedImageRetryPending.add(bindingKey);
+    this.publishRenderedImageState(logicalIndex, 'loading');
+    const timer = setTimeout(() => {
+      this.renderedImageRetryTimers.delete(timer);
+      this.renderedImageRetryPending.delete(bindingKey);
+      if (!image.isConnected || this.renderedImageBindings.get(image) !== bindingKey) return;
+      const replacement = document.createElement('img');
+      image.replaceWith(replacement);
+      this.configureSpreadImage(replacement, page, slide);
+    }, 300);
+    this.renderedImageRetryTimers.add(timer);
+  }
+
+  private publishRenderedImageState(
+    logicalIndex: number,
+    state: 'loading' | 'loaded' | 'error',
+  ): void {
+    this.options.onRenderedImageStateChange({ logicalIndex, state });
   }
 }
 
