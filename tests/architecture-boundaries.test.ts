@@ -276,6 +276,12 @@ test('autoplay interval remains directly editable with an explicit five-second d
   assert.match(css, /\.settings-backdrop \.interval-input[\s\S]*?pointer-events: auto !important/);
 });
 
+test('settings panel keeps editable focus and keyboard events away from the active reader', async () => {
+  const source = await readFile(path.join(srcRoot, 'ui/settings-panel.ts'), 'utf8');
+  assert.match(source, /backdrop\.addEventListener\('focusin',[\s\S]*?event\.stopPropagation\(\)/);
+  assert.match(source, /backdrop\.addEventListener\('keydown',[\s\S]*?event\.stopPropagation\(\)[\s\S]*?event\.key === 'Escape'/);
+});
+
 test('floating controls avoid sticky mobile tap and hover feedback', async () => {
   const css = await readFile(path.join(srcRoot, 'ui/float-control.css'), 'utf8');
   assert.match(css, /\.bookmark-control \{[\s\S]*?-webkit-tap-highlight-color:\s*transparent/);

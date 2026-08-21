@@ -345,7 +345,15 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
     }
   };
 
+  // PhotoSwipe traps focus inside the active reader. The settings dialog is a
+  // sibling overlay, so keep its focus and keyboard events inside this UI
+  // boundary instead of letting the reader reclaim focus or navigate pages.
+  backdrop.addEventListener('focusin', event => {
+    event.stopPropagation();
+  });
+
   backdrop.addEventListener('keydown', event => {
+    event.stopPropagation();
     if (event.key === 'Escape') {
       event.preventDefault();
       hide();

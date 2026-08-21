@@ -4,7 +4,8 @@ Before changing this repository, read `docs/README.md` and follow its minimal-re
 Do not load every historical document by default.
 
 - Current architecture and compatibility rules: `docs/architecture.md`
-- Active version plan and acceptance gates: `docs/v3.3.0-plan.md`
+- Active version plan and acceptance gates: none after the v3.3.1 release;
+  create the next plan under `docs/` before starting version-scoped work.
 - New-site work only: `docs/new-site-guide.md`
 - Historical rationale only when needed: `docs/history.md`
 
