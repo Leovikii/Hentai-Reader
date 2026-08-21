@@ -26,7 +26,7 @@ Currently supported (more on the way):
 - **18comic Decoding Engine** — Canvas-based descrambling runs through the shared priority scheduler, reuses managed image tasks, and releases Bitmap, Canvas, Blob, and Object URL resources predictably.
 - **Smart Anti-Blocking** — Domain feature-matching and redirect following keep the script working on sites like 4KHD that frequently change domains.
 - **Robust Loading** — Automatic retry with hath-node switching for failed images, a unified status HUD for load progress, and a load-aware scroll gate that stops paging at unloaded pages.
-- **Auto Play** — Hands-free slideshow mode with a five-second default, direct 1–60 second input, and five-second adjustment buttons.
+- **Auto Play** — Hands-free slideshow mode with a five-second default, direct 1–60 second input, and five-second adjustment buttons. A loading page gets one bounded five-second grace period and cannot block playback forever.
 
 ## Installation
 

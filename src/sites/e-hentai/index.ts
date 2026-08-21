@@ -27,16 +27,34 @@ const requestLimiter = new NetLimiter(REQUEST_POLICY.concurrent);
 /** All E-Hentai requests share one priority limiter to avoid request bursts. */
 function limitedFetch(
   url: string,
-  options: { priority?: number; key?: string; signal?: AbortSignal; fresh?: boolean } = {},
+  options: {
+    priority?: number;
+    key?: string;
+    signal?: AbortSignal;
+    fresh?: boolean;
+    timeoutMs?: number;
+  } = {},
 ): Promise<Response> {
   return requestLimiter.run(
     async () => {
-      const response = await fetch(url, {
-        signal: options.signal,
-        ...(options.fresh ? { cache: 'no-store' as RequestCache } : {}),
-      });
-      enforceRateLimit(response);
-      return response;
+      const requestController = new AbortController();
+      const abortRequest = () => requestController.abort(options.signal?.reason);
+      if (options.signal?.aborted) abortRequest();
+      else options.signal?.addEventListener('abort', abortRequest, { once: true });
+      const timeout = options.timeoutMs && options.timeoutMs > 0
+        ? setTimeout(() => requestController.abort(new DOMException('Request timed out', 'TimeoutError')), options.timeoutMs)
+        : null;
+      try {
+        const response = await fetch(url, {
+          signal: requestController.signal,
+          ...(options.fresh ? { cache: 'no-store' as RequestCache } : {}),
+        });
+        enforceRateLimit(response);
+        return response;
+      } finally {
+        if (timeout !== null) clearTimeout(timeout);
+        options.signal?.removeEventListener('abort', abortRequest);
+      }
     },
     { priority: options.priority, key: options.key, signal: options.signal },
   );
@@ -72,11 +90,15 @@ export const EHentaiAdapter: SiteAdapter = {
   },
 
   async resolveImage(url: string, context: ImageResolveContext) {
+    const loadTimeoutMs = context.priority >= LOAD_PRIORITY.foreground - 10
+      ? REQUEST_POLICY.foregroundLoadTimeoutMs
+      : REQUEST_POLICY.backgroundLoadTimeoutMs;
     const response = await limitedFetch(buildEHentaiViewerUrl(url, context.retryToken), {
       priority: context.priority,
       key: url,
       signal: context.signal,
       fresh: context.force || !!context.retryToken,
+      timeoutMs: loadTimeoutMs,
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
@@ -88,9 +110,7 @@ export const EHentaiAdapter: SiteAdapter = {
       src: viewer.src,
       ...(viewer.nl ? { retryToken: viewer.nl } : {}),
       ...(viewer.dimensions ? { sourceDimensions: viewer.dimensions } : {}),
-      loadTimeoutMs: context.priority >= LOAD_PRIORITY.foreground - 10
-        ? REQUEST_POLICY.foregroundLoadTimeoutMs
-        : REQUEST_POLICY.backgroundLoadTimeoutMs,
+      loadTimeoutMs,
     };
   },
 
