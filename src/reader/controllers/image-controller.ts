@@ -20,6 +20,7 @@ export interface ReaderSpreadItemData {
   src: '';
   w: number;
   h: number;
+  hrSpreadDirection: 'ltr' | 'rtl';
   hrSpread: readonly {
     index: number;
     src: string;
@@ -36,7 +37,12 @@ export interface ReaderImageControllerDeps {
 }
 
 export interface ReaderImageController {
-  getSpreadItemData(indices: readonly number[], width: number, height: number): ReaderSpreadItemData;
+  getSpreadItemData(
+    indices: readonly number[],
+    width: number,
+    height: number,
+    direction: 'ltr' | 'rtl',
+  ): ReaderSpreadItemData;
   getPhase(index: number): ReaderImagePhase;
   isLoading(index: number): boolean;
   handleContentLoad(index: number): void;
@@ -193,11 +199,17 @@ export function createReaderImageController(
     notify(url);
   }
 
-  function getSpreadItemData(indices: readonly number[], width: number, height: number): ReaderSpreadItemData {
+  function getSpreadItemData(
+    indices: readonly number[],
+    width: number,
+    height: number,
+    direction: 'ltr' | 'rtl',
+  ): ReaderSpreadItemData {
     return {
       src: '',
       w: Math.max(1, width),
       h: Math.max(1, height),
+      hrSpreadDirection: indices.length > 1 && direction === 'rtl' ? 'rtl' : 'ltr',
       hrSpread: indices.map(index => {
         const data = getItemData(index);
         return {

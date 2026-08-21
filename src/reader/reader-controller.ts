@@ -567,6 +567,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
           spread.logicalIndices,
           spread.width,
           spread.height,
+          deps.context.getDoublePageDirection(),
         ) as any;
       }
     });

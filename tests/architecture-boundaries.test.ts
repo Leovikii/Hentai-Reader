@@ -207,6 +207,44 @@ test('stable spread slots do not collapse while the partner source is pending', 
   assert.match(css, /\.hr-reader-spread__page:not\(:only-child\):last-child[\s\S]*?object-position:\s*left center/);
 });
 
+test('double-page direction stays in presentation and does not alter spread or navigation logic', async () => {
+  const reader = await readFile(path.join(srcRoot, 'reader/reader-controller.ts'), 'utf8');
+  const layout = await readFile(path.join(srcRoot, 'reader/controllers/spread-layout.ts'), 'utf8');
+  const driver = await readFile(path.join(srcRoot, 'reader/drivers/photoswipe-driver.ts'), 'utf8');
+  const css = await readFile(path.join(srcRoot, 'reader/shell/reader.css'), 'utf8');
+  const navigation = await Promise.all([
+    'reader/controllers/auto-play-controller.ts',
+    'reader/controllers/pagination-controller.ts',
+    'reader/controllers/wheel-pager.ts',
+  ].map(relative => readFile(path.join(srcRoot, relative), 'utf8')));
+
+  assert.equal((reader.match(/getDoublePageDirection\(\)/g) ?? []).length, 1);
+  assert.doesNotMatch(layout, /doublePageDirection|hrSpreadDirection|\brtl\b/);
+  assert.match(driver, /data-reader-spread-direction/);
+  assert.match(driver, /root\.dataset\.readerSpreadDirection/);
+  assert.match(css, /data-reader-spread-direction='rtl'[\s\S]*?flex-direction:\s*row-reverse/);
+  assert.doesNotMatch(navigation.join('\n'), /doublePageDirection|hrSpreadDirection|\brtl\b/);
+});
+
+test('double-page direction control is hidden and inert while dynamic spreads are disabled', async () => {
+  const source = await readFile(path.join(srcRoot, 'ui/settings-panel.ts'), 'utf8');
+  const css = await readFile(path.join(srcRoot, 'ui/settings-panel.css'), 'utf8');
+  assert.match(source, /directionItem\.hidden = !visible/);
+  assert.match(source, /directionItem\.inert = !visible/);
+  assert.match(source, /directionItem\.setAttribute\('aria-hidden', String\(!visible\)\)/);
+  assert.match(source, /if \(key === 'doublePageMode'\) syncDoublePageDirectionVisibility\(\)/);
+  assert.match(css, /\.settings-item\[hidden\][\s\S]*?display:\s*none !important/);
+});
+
+test('desktop settings popover stays inside narrow viewports', async () => {
+  const source = await readFile(path.join(srcRoot, 'ui/settings-panel.ts'), 'utf8');
+  const css = await readFile(path.join(srcRoot, 'ui/settings-panel.css'), 'utf8');
+  assert.match(source, /const viewportPadding = 16/);
+  assert.match(source, /window\.innerWidth - viewportPadding \* 2/);
+  assert.match(source, /Math\.max\(viewportPadding, Math\.min\(maxLeft, preferredLeft\)\)/);
+  assert.match(css, /width:\s*min\(340px, calc\(100vw - 32px\)\)/);
+});
+
 test('owned-image cleanup is observer-driven and expensive materialization is serialized', async () => {
   const scroll = await readFile(path.join(srcRoot, 'scroll/scroll-controller.ts'), 'utf8');
   const config = await readFile(path.join(srcRoot, 'state/config.ts'), 'utf8');
@@ -224,6 +262,18 @@ test('settings controls explicitly resist host-page button styling', async () =>
   assert.match(css, /\.settings-backdrop \.segment-item\.active[\s\S]*?color: #fff !important/);
   assert.match(css, /\.settings-backdrop \.settings-close-btn[\s\S]*?background: transparent !important/);
   assert.match(css, /\.settings-backdrop \.stepper-btn[\s\S]*?color: #fff !important/);
+});
+
+test('autoplay interval remains directly editable with an explicit five-second default', async () => {
+  const source = await readFile(path.join(srcRoot, 'ui/settings-panel.ts'), 'utf8');
+  const config = await readFile(path.join(srcRoot, 'state/config.ts'), 'utf8');
+  const css = await readFile(path.join(srcRoot, 'ui/settings-panel.css'), 'utf8');
+  assert.match(source, /intervalInput\.inputMode = 'numeric'/);
+  assert.match(source, /intervalInput\.select\(\)/);
+  assert.match(config, /AUTO_PLAY_INTERVAL_DEFAULT_SECONDS \* 1000/);
+  assert.match(css, /\.settings-backdrop \.settings-bottom-sheet[\s\S]*?user-select: none/);
+  assert.match(css, /\.settings-backdrop \.interval-input[\s\S]*?user-select: text !important/);
+  assert.match(css, /\.settings-backdrop \.interval-input[\s\S]*?pointer-events: auto !important/);
 });
 
 test('floating controls avoid sticky mobile tap and hover feedback', async () => {

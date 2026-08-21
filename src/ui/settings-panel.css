@@ -62,7 +62,7 @@
 
   :root:not(.hr-mobile) .settings-bottom-sheet {
     position: absolute;
-    width: 340px;
+    width: min(340px, calc(100vw - 32px));
     max-width: none;
     border-radius: 16px;
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -158,6 +158,10 @@
 
 .settings-item:last-child {
   margin-bottom: 0;
+}
+
+.settings-item[hidden] {
+  display: none !important;
 }
 
 .settings-label {
@@ -392,6 +396,8 @@
   isolation: isolate;
   color-scheme: dark;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .settings-backdrop .settings-close-btn,
@@ -470,6 +476,12 @@
 .settings-backdrop .interval-input {
   -webkit-appearance: textfield !important;
   appearance: textfield !important;
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  pointer-events: auto !important;
+  touch-action: manipulation !important;
+  cursor: text !important;
+  caret-color: #fff !important;
   background: transparent !important;
   color: #fff !important;
   border: 0 !important;

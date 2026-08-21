@@ -2,6 +2,7 @@ import PhotoSwipe from 'photoswipe';
 import type { ReaderDriver, ReaderDriverOptions, ScreenPoint } from '../contracts';
 import {
   getSpreadImageRenderState,
+  getSpreadPresentationDirection,
   getPhotoSwipeHolderPosition,
   getSpreadMouseClickAction,
   reconcilePhotoSwipeHolder,
@@ -63,6 +64,10 @@ class PhotoSwipeDriver implements ReaderDriver {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
       const fetchPriority = index === this.instance.currIndex ? 'high' : 'low';
+      const direction = getSpreadPresentationDirection(
+        itemData.hrSpreadDirection,
+        itemData.hrSpread.length,
+      );
       const images = itemData.hrSpread.map((page: any) => page.src
         ? `<img class="hr-reader-spread__page" data-logical-index="${Number(page.index)}" src="${escape(page.src)}" alt="${escape(page.alt || '')}" decoding="async" fetchpriority="${fetchPriority}">`
         : `<span class="hr-reader-spread__page hr-reader-spread__page--pending" data-logical-index="${Number(page.index)}" aria-hidden="true"></span>`
@@ -70,7 +75,7 @@ class PhotoSwipeDriver implements ReaderDriver {
       return {
         ...itemData,
         type: 'html',
-        html: `<div class="hr-reader-spread" data-reader-spread>${images}</div>`,
+        html: `<div class="hr-reader-spread" data-reader-spread data-reader-spread-direction="${direction}">${images}</div>`,
       };
     });
     this.instance.addFilter('isContentZoomable', (zoomable: boolean, content: any) => (
@@ -383,6 +388,10 @@ class PhotoSwipeDriver implements ReaderDriver {
         || !Array.isArray(itemData?.hrSpread)) return false;
     const root = slide.content.element?.querySelector?.('[data-reader-spread]') as HTMLElement | null;
     if (!root) return false;
+    root.dataset.readerSpreadDirection = getSpreadPresentationDirection(
+      itemData.hrSpreadDirection,
+      itemData.hrSpread.length,
+    );
 
     const existing = new Map<number, HTMLElement>();
     root.querySelectorAll<HTMLElement>('[data-logical-index]').forEach(element => {

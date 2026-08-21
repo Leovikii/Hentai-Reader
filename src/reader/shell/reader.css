@@ -561,6 +561,20 @@
   object-position: left center;
 }
 
+.hr-reader-spread[data-reader-spread-direction='rtl'] {
+  flex-direction: row-reverse;
+}
+
+.hr-reader-spread[data-reader-spread-direction='rtl']
+  .hr-reader-spread__page:not(:only-child):first-child {
+  object-position: left center;
+}
+
+.hr-reader-spread[data-reader-spread-direction='rtl']
+  .hr-reader-spread__page:not(:only-child):last-child {
+  object-position: right center;
+}
+
 .hr-reader-spread__page--pending {
   position: relative;
   min-width: 0;

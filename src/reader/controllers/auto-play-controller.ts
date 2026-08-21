@@ -1,5 +1,7 @@
 import type { ReaderAppContext } from '../contracts';
 
+const AUTO_PLAY_INTERVAL_MIN_MS = 1000;
+
 export interface AutoPlayHandle {
   start: () => void;
   stop: () => void;
@@ -17,7 +19,10 @@ export function createAutoPlay(
   function start(): void {
     if (timer) clearInterval(timer);
     if (context.isAutoPlayEnabled()) {
-      timer = setInterval(nextImageFn, Math.max(1000, context.getAutoPlayInterval()));
+      timer = setInterval(
+        nextImageFn,
+        Math.max(AUTO_PLAY_INTERVAL_MIN_MS, context.getAutoPlayInterval()),
+      );
     }
   }
 
