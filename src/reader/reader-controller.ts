@@ -150,7 +150,11 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     acquire: acquireImage,
     priority: LOAD_PRIORITY.thumbnail,
   });
-  const autoPlay = createAutoPlay(() => pswp?.next(), deps.context);
+  const autoPlay = createAutoPlay(
+    () => pswp?.next(),
+    () => pswp?.isCurrentContentLoaded() ?? false,
+    deps.context,
+  );
   let pagination: ReaderPaginationController;
   const shell = createReaderShell({
     inputCapabilities,
@@ -354,9 +358,6 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
         if (!activeLogicalIndices().includes(logicalIndex)) return;
         refreshHudForCurrent();
         syncUiAvailabilityForCurrent();
-        if (state === 'loaded'
-            && deps.context.isAutoPlayEnabled()
-            && pswp?.isCurrentContentLoaded()) autoPlay.start();
       },
     });
 
@@ -417,9 +418,6 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
         refreshSpreadLayout(session.currentIndex, index);
         refreshHudForCurrent();
         if (isActiveIndex) syncUiAvailabilityForCurrent();
-        if (isActiveIndex
-            && deps.context.isAutoPlayEnabled()
-            && pswp?.isCurrentContentLoaded()) autoPlay.start();
       },
     });
 
@@ -567,6 +565,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
           spread.logicalIndices,
           spread.width,
           spread.height,
+          deps.context.getDoublePageDirection(),
         ) as any;
       }
     });
@@ -607,13 +606,12 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
           pagination.loadPrev();
         }
         if (deps.context.isAutoPlayEnabled()) {
-          autoPlay.stop();
           // Reached the last image with no further page to load — stop instead
-          // of leaving the interval spinning on a no-op next().
+          // of leaving a timeout retrying a no-op next().
           if (pswp.currentIndex >= spreadLayout.spreads.length - 1 && !deps.context.getNextUrl()) {
             autoPlay.stopAtEnd();
-          } else if (pswp.isCurrentContentLoaded()) {
-            autoPlay.start();
+          } else {
+            autoPlay.reset();
           }
         }
 

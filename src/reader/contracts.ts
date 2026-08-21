@@ -96,6 +96,7 @@ export interface ReaderAppContext {
   getGalleryItems(): readonly GalleryItem[];
   isScrollMode(): boolean;
   isDoublePageModeEnabled(): boolean;
+  getDoublePageDirection(): 'ltr' | 'rtl';
   isAutoPlayEnabled(): boolean;
   setAutoPlayEnabled(enabled: boolean): void;
   getAutoPlayInterval(): number;

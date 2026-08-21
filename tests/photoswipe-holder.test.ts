@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   getSpreadImageRenderState,
+  getSpreadPresentationDirection,
   getPhotoSwipeHolderPosition,
   getSpreadMouseClickAction,
   reconcilePhotoSwipeHolder,
@@ -9,6 +10,13 @@ import {
   shouldHandleSpreadMouseClick,
   shouldRetrySpreadImage,
 } from '../src/reader/drivers/photoswipe-holder.ts';
+
+test('uses rtl only for double-page presentation', () => {
+  assert.equal(getSpreadPresentationDirection('rtl', 2), 'rtl');
+  assert.equal(getSpreadPresentationDirection('rtl', 1), 'ltr');
+  assert.equal(getSpreadPresentationDirection('ltr', 2), 'ltr');
+  assert.equal(getSpreadPresentationDirection('invalid', 2), 'ltr');
+});
 
 test('distinguishes pending, decoded, and failed spread image elements', () => {
   assert.equal(getSpreadImageRenderState({ complete: false, naturalWidth: 0, naturalHeight: 0 }), 'loading');

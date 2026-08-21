@@ -9,14 +9,15 @@
 
 | 任务 | 必读 | 按需读取 |
 | --- | --- | --- |
-| 实现或审阅 v3.3.0 | `v3.3.0-plan.md`、`architecture.md` | `history.md` |
+| 实现或审阅当前架构 | `architecture.md` | `history.md` |
+| 规划新版本 | `architecture.md`、新建的活动版本计划 | `history.md` |
 | 接入或审阅新站点 | `architecture.md`、`new-site-guide.md` | 当前活动计划 |
 | 调查旧设计原因 | `architecture.md` | `history.md` |
 | 仅修复局部实现 | `architecture.md` 中对应边界 | 当前活动计划的相关阶段 |
 
 ## 文档职责
 
-- `v3.3.0-plan.md`：唯一活动版本计划，包含范围、阶段和验收门槛。
+- 活动版本计划：只在版本开发期间存在，包含范围、阶段和验收门槛；当前没有活动计划。
 - `architecture.md`：当前稳定架构、所有权和兼容性红线；不记录逐轮开发过程。
 - `new-site-guide.md`：适配器接入操作指南。
 - `history.md`：已发布版本和已关闭问题的压缩摘要，只在追溯原因时读取。
@@ -30,4 +31,3 @@
 4. 性能和内存证据只保留可复现条件、关键数字、结论与重新评审门槛。
 5. 用户功能只有实现并验收后才能进入根 README；计划中的功能只能存在于本目录。
 6. 当前实现与未来计划不一致时，`architecture.md` 描述当前事实，活动计划描述目标状态。
-

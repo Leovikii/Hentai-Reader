@@ -90,3 +90,41 @@ test('E-Hentai follows an nl chain and publishes the first healthy Hath source',
     });
   }
 });
+
+test('E-Hentai bounds a hung viewer request without aborting the shared lifecycle', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalSetTimeout = globalThis.setTimeout;
+  const originalClearTimeout = globalThis.clearTimeout;
+  let requestSignal: AbortSignal | undefined;
+  let timeoutDelay = 0;
+
+  globalThis.setTimeout = ((callback: TimerHandler, delay?: number) => {
+    timeoutDelay = Number(delay);
+    queueMicrotask(callback as () => void);
+    return 1;
+  }) as typeof setTimeout;
+  globalThis.clearTimeout = (() => {}) as typeof clearTimeout;
+  globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => {
+    requestSignal = init?.signal ?? undefined;
+    return new Promise<Response>((_resolve, reject) => {
+      const rejectAborted = () => reject(requestSignal?.reason ?? new DOMException('Aborted', 'AbortError'));
+      if (requestSignal?.aborted) rejectAborted();
+      else requestSignal?.addEventListener('abort', rejectAborted, { once: true });
+    });
+  }) as typeof fetch;
+
+  const lifecycleController = new AbortController();
+  try {
+    await assert.rejects(EHentaiAdapter.resolveImage(
+      'https://e-hentai.org/s/token/hung',
+      { priority: 100, force: false, signal: lifecycleController.signal },
+    ), error => (error as Error).name === 'TimeoutError');
+    assert.equal(timeoutDelay, 12_000);
+    assert.equal(requestSignal?.aborted, true);
+    assert.equal(lifecycleController.signal.aborted, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.setTimeout = originalSetTimeout;
+    globalThis.clearTimeout = originalClearTimeout;
+  }
+});

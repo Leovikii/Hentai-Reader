@@ -6,6 +6,13 @@ interface PhotoSwipeSlideLike {
 export type SpreadMouseClickAction = 'image' | 'background' | null;
 export type SpreadImageRenderState = 'loading' | 'loaded' | 'error';
 
+export function getSpreadPresentationDirection(
+  value: unknown,
+  memberCount: number,
+): 'ltr' | 'rtl' {
+  return memberCount > 1 && value === 'rtl' ? 'rtl' : 'ltr';
+}
+
 export function getSpreadImageRenderState(image: {
   complete: boolean;
   naturalWidth: number;

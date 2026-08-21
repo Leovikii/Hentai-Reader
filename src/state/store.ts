@@ -3,6 +3,10 @@ import type { UserSettings } from './types';
 import type { SiteAdapter } from '../core/site-adapter';
 import type { GalleryItem } from '../core/gallery';
 import { loadSettings } from './config';
+import {
+  normalizeAutoPlayIntervalMs,
+  normalizeDoublePageDirection,
+} from './settings-values';
 
 type StoreEvent = 'settingsChanged' | 'readerModeChanged';
 type Listener = () => void;
@@ -40,11 +44,17 @@ class Store {
 
   updateSetting<K extends keyof UserSettings>(key: K, value: UserSettings[K]): void {
     if (key === 'scrollMode' && this.activeAdapter?.scrollPolicy?.configurable === false) return;
-    this._settings[key] = value;
+    let normalizedValue = value;
+    if (key === 'autoPlayInterval') {
+      normalizedValue = normalizeAutoPlayIntervalMs(value) as UserSettings[K];
+    } else if (key === 'doublePageDirection') {
+      normalizedValue = normalizeDoublePageDirection(value) as UserSettings[K];
+    }
+    this._settings[key] = normalizedValue;
     if (key === 'scrollMode' && this.activeAdapter) {
-      GM_setValue(`${this.activeAdapter.name}_scrollMode`, value);
+      GM_setValue(`${this.activeAdapter.name}_scrollMode`, normalizedValue);
     } else {
-      GM_setValue(key, value);
+      GM_setValue(key, normalizedValue);
     }
     this.emit('settingsChanged');
   }

@@ -1,7 +1,6 @@
 # 当前架构与兼容性基线
 
-状态：v3.3.0 架构与兼容性基线已完成；Chrome、Firefox + Violentmonkey、EhSyringe 共存、
-桌面、移动端和三个现有站点的最终实机验收均已通过，版本发布就绪但尚未发布。
+状态：v3.3.1 已正式发布并完成自动化与实机验收。当前没有活动版本计划。
 
 ## 总体原则
 
@@ -83,6 +82,18 @@ viewer URL
 
 - `ReaderSession` 持有当前逻辑索引和 live DOM 注册，不持有 PhotoSwipe 或站点状态。
 - Reader Controller 组织图片、预取、分页、缩略图、滚轮和自动播放控制器。
+- Reader 的逻辑页、Spread 序列和物理翻页输入继续按 v3.3.0 左到右语义组织。动态双页支持
+  独立的 LTR/RTL 成员排列：LTR 把较小逻辑索引放左侧，RTL 只在展示 DOM 通过通用方向标记
+  把它放右侧；两种排列都保持图片朝书脊对齐。该设置只在动态双页总开关开启时显示，隐藏时
+  保留选择。`logicalIndices`、Spread 映射、PhotoSwipe 导航、输入、缓存、分页和预取不读取方向。
+- 自动播放开关只在 Reader 会话内有效；间隔默认 5 秒并持久化为毫秒，当前设置面板允许直接
+  输入 1–60 秒整数或用加减按钮按 5 秒调整；输入、持久化和 timer 均以 1 秒为硬下限。控制器
+  只持有一个 `setTimeout`：先等待设置间隔，届时若当前 Spread 未完整显示，只追加一次固定 5 秒
+  宽限，结束后无条件继续。图片和布局事件不负责停止或恢复计时器，设置变化和手动翻页只重置
+  当前单次计时。
+- 设置面板是 Reader 外的同级浮层；面板边界必须截断内部 `focusin` 和键盘事件，避免 PhotoSwipe
+  的焦点陷阱抢走输入框焦点或把方向键解释为翻页。该隔离不得关闭或修改 Reader 的焦点陷阱，
+  Escape 仍由设置面板自身处理。
 - Spread Layout 以固定 0+1、2+3 配对槽位把逻辑页映射为表现页；宽屏且尚无横图/失败反证
   时，未知尺寸使用待确认双页并预留两个稳定槽位。横图、失败页或宽度不足时拆为单页，
   重算时以稳定 key 保持主逻辑页。
@@ -167,7 +178,9 @@ viewer URL
 - Gallery Item 指向 viewer 页面；解析后才得到 hath 图片 URL。
 - 已验证的 hath 原图 URL 路径包含源宽高；解析语法、域名约束和异常值校验只存在于
   E-Hentai 适配器，并通过标准 `sourceDimensions` 发布。共享加载层和 Reader 不识别该 URL。
-- viewer 和 Gallery 页面请求共享站点 limiter；429/503 在释放槽位前触发 cooldown。
+- viewer 和 Gallery 页面请求共享站点 limiter；429/503 在释放槽位前触发 cooldown。viewer HTML
+  请求按前台 12 秒、后台 20 秒设置单次超时，超时只终止该站点请求并进入共享有界重试，不中止
+  仍有租约的图片生命周期。
 - `nl` token 驱动串行节点切换；不得并行竞速或重复已经失败的来源。
 - 普通缩略图和 Sprite crop 均通过标准 Preview Descriptor。
 
@@ -206,7 +219,7 @@ git diff --check
 
 架构测试持续禁止 Reader 反向依赖、站点写 Store、core 跨层依赖、旧路径复活和 PhotoSwipe
 内部访问扩散。涉及真实网络、浏览器布局、内存或手势的改动还必须完成 Chrome DevTools 与
-真实站点验证；桌面设备模拟不能替代移动端手势人工验收。v3.3.0 的常规 E-Hentai、18comic、
-4KHD 和既有移动端真实交互回归已通过；动图库在 Chrome、Firefox + Violentmonkey、EhSyringe
-共存及 375×829 移动视口压力回归通过。输入能力分类改动必须继续覆盖普通桌面、混合指针设备和
-纯触摸设备。
+真实站点验证；桌面设备模拟不能替代移动端手势人工验收。v3.3.0 发布版的常规 E-Hentai、
+18comic、4KHD 和既有移动端真实交互回归已通过；动图库在 Chrome、Firefox + Violentmonkey、
+EhSyringe 共存及 375×829 移动视口压力回归通过。输入能力分类改动必须继续覆盖普通桌面、
+混合指针设备和纯触摸设备。

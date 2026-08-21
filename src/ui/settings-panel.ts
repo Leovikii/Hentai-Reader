@@ -3,6 +3,13 @@ import { store } from '../state/store';
 import type { UserSettings } from '../state/types';
 import { i18n } from '../utils/i18n';
 import { svgClose } from '../utils/icons';
+import {
+  AUTO_PLAY_INTERVAL_MAX_SECONDS,
+  AUTO_PLAY_INTERVAL_MIN_SECONDS,
+  AUTO_PLAY_INTERVAL_STEP_SECONDS,
+  normalizeAutoPlaySeconds,
+  stepAutoPlaySeconds,
+} from '../state/settings-values';
 
 export interface SettingsPanelHandle {
   getContainerElement: () => HTMLElement;
@@ -58,6 +65,7 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
   sheetHeader.appendChild(closeBtn);
   bottomSheet.appendChild(sheetHeader);
 
+  let syncDoublePageDirectionVisibility = () => {};
   SETTINGS.forEach(({ label, key }) => {
     if (key === 'scrollMode' && store.activeAdapter?.scrollPolicy?.configurable === false) {
       return;
@@ -86,6 +94,7 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
       store.updateSetting(key, newValue);
       toggle.classList.toggle('on', newValue);
       toggle.setAttribute('aria-checked', String(newValue));
+      if (key === 'doublePageMode') syncDoublePageDirectionVisibility();
       if (key === 'scrollMode') {
         window.location.reload();
       }
@@ -95,6 +104,57 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
     item.appendChild(toggle);
     bottomSheet.appendChild(item);
   });
+
+  const directionItem = document.createElement('div');
+  directionItem.className = 'settings-item';
+
+  const directionLabel = document.createElement('span');
+  directionLabel.className = 'settings-label';
+  directionLabel.textContent = i18n.doublePageDirection;
+
+  const directionControl = document.createElement('div');
+  directionControl.className = 'segment-control';
+
+  const directionOptions: Array<{
+    value: UserSettings['doublePageDirection'];
+    label: string;
+  }> = [
+    { value: 'ltr', label: i18n.directionLtr },
+    { value: 'rtl', label: i18n.directionRtl },
+  ];
+  const directionButtons: HTMLButtonElement[] = [];
+
+  directionOptions.forEach(option => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `segment-item${store.settings.doublePageDirection === option.value ? ' active' : ''}`;
+    button.textContent = option.label;
+    button.setAttribute('aria-pressed', String(store.settings.doublePageDirection === option.value));
+    button.onclick = event => {
+      event.stopPropagation();
+      if (store.settings.doublePageDirection === option.value) return;
+      store.updateSetting('doublePageDirection', option.value);
+      directionButtons.forEach(item => {
+        const active = item === button;
+        item.classList.toggle('active', active);
+        item.setAttribute('aria-pressed', String(active));
+      });
+    };
+    directionButtons.push(button);
+    directionControl.appendChild(button);
+  });
+
+  directionItem.appendChild(directionLabel);
+  directionItem.appendChild(directionControl);
+  bottomSheet.appendChild(directionItem);
+
+  syncDoublePageDirectionVisibility = () => {
+    const visible = store.settings.doublePageMode;
+    directionItem.hidden = !visible;
+    directionItem.inert = !visible;
+    directionItem.setAttribute('aria-hidden', String(!visible));
+  };
+  syncDoublePageDirectionVisibility();
 
   // Auto-play interval setting
   const intervalItem = document.createElement('div');
@@ -111,7 +171,7 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
   minusBtn.type = 'button';
   minusBtn.className = 'stepper-btn';
   minusBtn.textContent = '−';
-  minusBtn.setAttribute('aria-label', `${i18n.playSpeed}: -1`);
+  minusBtn.setAttribute('aria-label', `${i18n.playSpeed}: -${AUTO_PLAY_INTERVAL_STEP_SECONDS}`);
 
   const intervalInput = document.createElement('input');
   intervalInput.type = 'number';
@@ -119,41 +179,55 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
   intervalInput.name = 'hr-autoplay-interval';
   intervalLabel.htmlFor = intervalInput.id;
   intervalInput.className = 'interval-input';
-  intervalInput.min = '1';
-  intervalInput.max = '60';
+  intervalInput.min = String(AUTO_PLAY_INTERVAL_MIN_SECONDS);
+  intervalInput.max = String(AUTO_PLAY_INTERVAL_MAX_SECONDS);
   intervalInput.step = '1';
-  intervalInput.value = String(store.settings.autoPlayInterval / 1000);
-  intervalInput.onclick = (e) => e.stopPropagation();
+  intervalInput.inputMode = 'numeric';
+  intervalInput.autocomplete = 'off';
+  let lastValidSeconds = normalizeAutoPlaySeconds(store.settings.autoPlayInterval / 1000);
+  intervalInput.value = String(lastValidSeconds);
+  intervalInput.onclick = (event) => {
+    event.stopPropagation();
+    intervalInput.select();
+  };
 
   const plusBtn = document.createElement('button');
   plusBtn.type = 'button';
   plusBtn.className = 'stepper-btn';
   plusBtn.textContent = '+';
-  plusBtn.setAttribute('aria-label', `${i18n.playSpeed}: +1`);
+  plusBtn.setAttribute('aria-label', `${i18n.playSpeed}: +${AUTO_PLAY_INTERVAL_STEP_SECONDS}`);
 
-  const updateInterval = (val: number) => {
-    if (!isNaN(val) && val >= 1 && val <= 60) {
-      intervalInput.value = String(val);
-      store.updateSetting('autoPlayInterval', val * 1000);
+  const commitInterval = (value: unknown) => {
+    const seconds = normalizeAutoPlaySeconds(value, lastValidSeconds);
+    lastValidSeconds = seconds;
+    intervalInput.value = String(seconds);
+    const milliseconds = seconds * 1000;
+    if (store.settings.autoPlayInterval !== milliseconds) {
+      store.updateSetting('autoPlayInterval', milliseconds);
     }
   };
 
-  intervalInput.onchange = (e) => {
-    updateInterval(parseFloat((e.target as HTMLInputElement).value));
+  intervalInput.onchange = () => {
+    commitInterval(intervalInput.valueAsNumber);
+  };
+  intervalInput.onblur = () => {
+    commitInterval(intervalInput.valueAsNumber);
+  };
+  intervalInput.onkeydown = event => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    commitInterval(intervalInput.valueAsNumber);
+    intervalInput.blur();
   };
 
   minusBtn.onclick = (e) => {
     e.stopPropagation();
-    let current = parseFloat(intervalInput.value);
-    if (isNaN(current)) current = 5;
-    updateInterval(Math.max(1, current - 1));
+    commitInterval(stepAutoPlaySeconds(intervalInput.valueAsNumber, -1, lastValidSeconds));
   };
 
   plusBtn.onclick = (e) => {
     e.stopPropagation();
-    let current = parseFloat(intervalInput.value);
-    if (isNaN(current)) current = 5;
-    updateInterval(Math.min(60, current + 1));
+    commitInterval(stepAutoPlaySeconds(intervalInput.valueAsNumber, 1, lastValidSeconds));
   };
 
   intervalRight.appendChild(minusBtn);
@@ -219,8 +293,8 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
 
   const show = () => {
     if (window.matchMedia('(hover: hover) and (pointer: fine)').matches && !document.documentElement.classList.contains('hr-mobile')) {
-      // Hardcode width for desktop to prevent CSS transition measurement issues
-      const panelWidth = 340;
+      const viewportPadding = 16;
+      const panelWidth = Math.min(340, Math.max(0, window.innerWidth - viewportPadding * 2));
       const rect = anchorElement.getBoundingClientRect();
       
       // Temporarily display block to measure height if needed, but since it's just opacity: 0,
@@ -234,11 +308,15 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
       bottomSheet.style.top = `${top}px`;
       bottomSheet.style.bottom = 'auto';
 
-      if (rect.left < window.innerWidth / 2) {
-        bottomSheet.style.left = `${rect.right + 20}px`;
+      const opensRight = rect.left < window.innerWidth / 2;
+      const preferredLeft = opensRight ? rect.right + 20 : rect.left - panelWidth - 20;
+      const maxLeft = Math.max(viewportPadding, window.innerWidth - panelWidth - viewportPadding);
+      const left = Math.max(viewportPadding, Math.min(maxLeft, preferredLeft));
+      bottomSheet.style.left = `${left}px`;
+
+      if (opensRight) {
         bottomSheet.style.transformOrigin = 'left center';
       } else {
-        bottomSheet.style.left = `${rect.left - panelWidth - 20}px`;
         bottomSheet.style.transformOrigin = 'right center';
       }
       
@@ -267,7 +345,15 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
     }
   };
 
+  // PhotoSwipe traps focus inside the active reader. The settings dialog is a
+  // sibling overlay, so keep its focus and keyboard events inside this UI
+  // boundary instead of letting the reader reclaim focus or navigate pages.
+  backdrop.addEventListener('focusin', event => {
+    event.stopPropagation();
+  });
+
   backdrop.addEventListener('keydown', event => {
+    event.stopPropagation();
     if (event.key === 'Escape') {
       event.preventDefault();
       hide();
