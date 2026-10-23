@@ -51,6 +51,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
   const inputCapabilities = getReaderInputCapabilities();
   let pswp: ReaderDriver | null = null;
   let isActive = false;
+  let isClosing = false;
   let isReinitializing = false;
   let reinitializationDepth = 0;
   let overflowSnapshot: { documentElement: string; body: string } | null = null;
@@ -204,7 +205,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     // Guard against a second open() while already active (e.g. the
     // autoEnterSinglePage timer firing after a manual open) — a second PhotoSwipe
     // built over the live one would orphan the first instance.
-    if (isActive) return;
+    if (isActive || pswp) return;
 
     session.syncImages(Array.from(document.querySelectorAll('.r-img, .r-ph')) as HTMLElement[]);
     if (session.imageCount === 0) {
@@ -270,25 +271,11 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
       initPhotoSwipe(spreadLayout.spreadIndexForLogical(startIndex));
     } catch (error) {
       console.error('[Hentai-Reader] Reader initialization failed', error);
-      prefetch.clear();
-      isActive = false;
-      if (pswp) {
-        const failedDriver = pswp;
-        pswp = null;
-        try { failedDriver.destroy(); } catch {}
-      }
-      if (overflowSnapshot) {
-        document.documentElement.style.overflow = overflowSnapshot.documentElement;
-        document.body.style.overflow = overflowSnapshot.body;
-        overflowSnapshot = null;
-      }
-      document.documentElement.classList.remove('hr-reader-open');
-      if (deps.context.isScrollMode()) deps.scroll.resume();
-      deps.context.emitReaderModeChanged();
+      close();
       return;
     }
 
-    if (deps.context.isAutoPlayEnabled()) {
+    if (!isClosing && deps.context.isAutoPlayEnabled()) {
       autoPlay.start();
     }
   }
@@ -323,7 +310,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     onMobileInteractionStart = cancelMobileUITimeout;
     onMobileInteractionEnd = triggerMobileUITimeout;
 
-    function handleScreenClick(point: ScreenPoint, defaultCenterAction: 'zoom' | 'toggle') {
+    function handleScreenClick(point: ScreenPoint) {
       const width = window.innerWidth;
       if (point.x < width * 0.3) {
         if (pswp?.currentIndex === 0 && deps.context.getPrevUrl() && !deps.context.isPageFetching()) {
@@ -338,20 +325,14 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
           pswp?.next();
         }
       } else {
-        if (defaultCenterAction === 'zoom' && pswp?.canToggleCurrentZoom()) {
-          pswp.toggleCurrentZoom(point);
-        } else {
-          const isNowVisible = pswp?.toggleUi();
-          if (isNowVisible) triggerMobileUITimeout();
-        }
+        const isNowVisible = pswp?.toggleUi();
+        if (isNowVisible) triggerMobileUITimeout();
       }
     }
 
     pswp = deps.createDriver({
       startIndex: startSpreadIndex,
-      onBackgroundClick: point => handleScreenClick(point, 'toggle'),
-      onImageClick: point => handleScreenClick(point, 'zoom'),
-      onTap: point => handleScreenClick(point, 'toggle'),
+      onContentClick: handleScreenClick,
       onRenderedImageStateChange: ({ logicalIndex, state }) => {
         if (state === 'error') renderedFailedLogicalIndices.add(logicalIndex);
         else renderedFailedLogicalIndices.delete(logicalIndex);
@@ -359,6 +340,16 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
         refreshHudForCurrent();
         syncUiAvailabilityForCurrent();
       },
+    });
+
+    const driver = pswp;
+    driver.on('destroy', () => {
+      // The event precedes PhotoSwipe's DOM removal and remaining cleanup.
+      queueMicrotask(() => {
+        if (pswp !== driver) return;
+        pswp = null;
+        finishClose();
+      });
     });
 
     // PhotoSwipe's vertical-drag-to-close only fires when currZoomLevel <= fit.
@@ -441,7 +432,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
       preferredLogicalIndex = session.currentIndex,
       refreshLogicalIndex = preferredLogicalIndex,
     ): void {
-      if (!pswp) return;
+      if (!pswp || isClosing) return;
       pendingLayoutRequest = {
         preferredLogicalIndex,
         refreshLogicalIndex,
@@ -450,7 +441,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     }
 
     function applyPendingSpreadLayout(): void {
-      if (!pswp) return;
+      if (!pswp || isClosing) return;
       const {
         preferredLogicalIndex,
         refreshLogicalIndex,
@@ -490,11 +481,13 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
         }
       } else {
         const refreshSpread = spreadLayout.spreadIndexForLogical(refreshLogicalIndex);
-        if (refreshSpread >= 0) {
-          pswp.refreshSlide(refreshSpread);
-          refreshHudForCurrent();
-          syncUiAvailabilityForCurrent();
-        }
+        // A coalesced neighbor completion can replace the requested index.
+        // Always reconcile the current spread too, or its ready source may
+        // remain trapped behind a pending slot after an uncached jump.
+        pswp.refreshSlide(targetSpread);
+        if (refreshSpread >= 0 && refreshSpread !== targetSpread) pswp.refreshSlide(refreshSpread);
+        refreshHudForCurrent();
+        syncUiAvailabilityForCurrent();
       }
     }
     refreshActiveLayout = () => refreshSpreadLayout(session.currentIndex);
@@ -586,7 +579,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     pswp.on('destroy', () => wheelPager.stop());
 
     pswp.on('change', () => {
-      if (isReinitializing) {
+      if (isReinitializing || isClosing) {
         return;
       }
       if (pswp) {
@@ -673,12 +666,23 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
   }
 
   function close(): void {
-    if (!isActive) return;
-    isActive = false;
+    if (!isActive || isClosing) return;
+    isClosing = true;
     autoPlay.stop();
     deps.context.setAutoPlayEnabled(false);
 
     prefetch.clear();
+
+    if (pswp) {
+      pswp.destroy();
+    } else {
+      finishClose();
+    }
+  }
+
+  function finishClose(): void {
+    isActive = false;
+    isClosing = false;
 
     if (overflowSnapshot) {
       document.documentElement.style.overflow = overflowSnapshot.documentElement;
@@ -727,23 +731,13 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
       deps.scroll.resume();
     }
 
-    if (pswp) {
-      const p = pswp;
-      pswp = null;
-      try {
-        p.destroy();
-      } catch (err) {
-        console.error('[Hentai-Reader] Error destroying PhotoSwipe:', err);
-      }
-    }
-
     deps.context.emitReaderModeChanged();
 
     deps.context.onReaderClose(deps.context.getImageOffset() + session.currentIndex);
   }
 
   deps.context.subscribeSettingsChanged(() => {
-    if (!isActive) return;
+    if (!isActive || isClosing) return;
     refreshActiveLayout();
     if (deps.context.isAutoPlayEnabled()) {
       autoPlay.start();

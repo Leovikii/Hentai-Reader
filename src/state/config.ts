@@ -5,6 +5,7 @@ import {
   AUTO_PLAY_INTERVAL_DEFAULT_SECONDS,
   normalizeAutoPlayIntervalMs,
   normalizeDoublePageDirection,
+  normalizeHoverPreviewMode,
 } from './settings-values';
 
 export const CFG: AppConfig = {
@@ -25,6 +26,7 @@ export function loadSettings(adapter?: Pick<SiteAdapter, 'name' | 'scrollPolicy'
   
   return {
     scrollMode,
+    hoverPreviewMode: normalizeHoverPreviewMode(GM_getValue('hoverPreviewMode', 'fit')),
     autoEnterSinglePage: GM_getValue('autoEnterSinglePage', false),
     clickToEnterReader: GM_getValue('clickToEnterReader', true),
     doublePageMode: GM_getValue('doublePageMode', true),

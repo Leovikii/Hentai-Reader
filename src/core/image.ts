@@ -39,6 +39,7 @@ export interface LoadedImage extends ResolvedImage {
 
 export type ImageLoadIntent =
   | 'foreground'
+  | 'preview'
   | 'neighbor'
   | 'scroll'
   | 'thumbnail'

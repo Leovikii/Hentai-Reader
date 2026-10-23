@@ -36,6 +36,11 @@ export interface SiteReaderCloseContext {
   pageSize: number;
 }
 
+export interface GalleryHoverTarget {
+  element: HTMLElement;
+  key: string;
+}
+
 export interface SiteAdapter extends GalleryAdapter {
   name: string;
   scrollPolicy?: SiteScrollPolicy;
@@ -58,6 +63,8 @@ export interface SiteAdapter extends GalleryAdapter {
 
   // UI helpers
   getContainer: () => HTMLElement | null; // Used for float control positioning
+  // Maps native gallery DOM to an already parsed item; shared UI owns preview behavior.
+  getHoverTarget?: (target: Element) => GalleryHoverTarget | null;
   hideOriginalElements?: () => void | (() => void); // Optionally return initialization rollback
 
   // Optional lifecycle hook: when the single page mode is closed, useful for syncing pagination URL

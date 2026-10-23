@@ -5,9 +5,7 @@ export interface ScreenPoint {
 
 export interface ReaderDriverOptions {
   startIndex: number;
-  onBackgroundClick: (point: ScreenPoint) => void;
-  onImageClick: (point: ScreenPoint) => void;
-  onTap: (point: ScreenPoint) => void;
+  onContentClick: (point: ScreenPoint) => void;
   onRenderedImageStateChange: (event: {
     logicalIndex: number;
     state: 'loading' | 'loaded' | 'error';
@@ -19,6 +17,7 @@ export interface ReaderDriver {
   readonly currentIndex: number;
   on(event: string, listener: (event: any) => void): void;
   init(): void;
+  /** Request teardown; emits destroy when cleanup begins, possibly after opening settles. */
   destroy(): void;
   next(): void;
   prev(): void;
@@ -33,8 +32,6 @@ export interface ReaderDriver {
   isCurrentContentLoaded(): boolean;
   isCurrentZoomed(): boolean;
   isCurrentAtInitialZoom(): boolean;
-  canToggleCurrentZoom(): boolean;
-  toggleCurrentZoom(point: ScreenPoint): void;
   showUi(): void;
   hideUi(): void;
   toggleUi(): boolean;

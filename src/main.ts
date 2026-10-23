@@ -4,6 +4,7 @@ import { store } from './state/store';
 import { SiteManager } from './sites/site-manager';
 import { processBatch, setupAutoScroll } from './scroll/scroll-controller';
 import { createReader } from './app/create-reader';
+import { setupHoverPreview } from './app/create-hover-preview';
 import { createFloatControl } from './ui/float-control';
 import { initViewportScale } from './utils/viewport';
 import { GalleryPageLoader } from './core/gallery-page-loader';
@@ -69,12 +70,10 @@ import { GalleryPageLoader } from './core/gallery-page-loader';
     const readerHandle = createReader(pageLoader);
 
     rollbacks.push(createFloatControl(readerHandle));
+    rollbacks.push(setupHoverPreview(readerHandle));
 
-  // Non-scroll dwell warm-up: the grid downloads nothing until the reader opens,
-  // and a user who lingers on the gallery is almost certainly about to read from
-  // image 1. After a short dwell, prefetch the first few images' bytes so the
-  // reader opens instantly. Bailed automatically if they open sooner (warmup is
-  // deduped) or leave (the page unloads, killing in-flight downloads).
+  // After a short gallery dwell, warm the first few images through the shared
+  // service so hover previews and the reader can reuse the same tasks and cache.
     if (!store.settings.scrollMode) {
       setTimeout(() => {
         if (!readerHandle.isActive()) readerHandle.warmupInitial(3);

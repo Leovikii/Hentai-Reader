@@ -6,6 +6,7 @@ import {
   extractEHentaiItems,
   getEHentaiNextUrl,
   getEHentaiPrevUrl,
+  getEHentaiHoverTarget,
   parseEHentaiPageMetadata,
   parseEHentaiViewer,
 } from './gallery.ts';
@@ -68,6 +69,7 @@ function enforceRateLimit(response: Response): void {
 
 export const EHentaiAdapter: SiteAdapter = {
   name: 'E-Hentai/ExHentai',
+  getHoverTarget: getEHentaiHoverTarget,
   match(url: string) {
     return /https?:\/\/(e-|ex)hentai\.org\/(g|s)\//.test(url);
   },

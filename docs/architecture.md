@@ -1,6 +1,6 @@
 # 当前架构与兼容性基线
 
-状态：v3.3.1 已正式发布并完成自动化与实机验收。当前没有活动版本计划。
+状态：发布基线为 v3.3.1；v3.4.0 悬停预览已实现，验收记录见 `v3.4.0-plan.md`，尚未发布。
 
 ## 总体原则
 
@@ -20,6 +20,7 @@ src/
   core/                   Gallery、图片和站点契约
   services/               图片生命周期、调度、限流、缩略图
   reader/                 Reader 控制器、Session、Driver 和 Shell
+  preview/                通用画廊悬停预览交互与浮层
   scroll/                 卷轴加载、分页观察和关闭返回定位
   sites/                  站点适配器与新站点模板
   state/                  应用设置和 Store
@@ -61,7 +62,7 @@ viewer URL
   -> optional materialize
   -> byte load / dimensions
   -> shared cache
-  -> leases: foreground / neighbor / scroll / thumbnail / warmup
+  -> leases: foreground / preview / neighbor / scroll / thumbnail / warmup
   -> eviction and optional Object URL revoke
 ```
 
@@ -99,6 +100,9 @@ viewer URL
   重算时以稳定 key 保持主逻辑页。
 - Reader Shell 只依赖 Reader 契约和 Driver，不直接读取全局 Store。
 - PhotoSwipe 包导入、`currSlide` 等内部访问和手势挂载只允许在 Driver。
+- Driver 的销毁请求须幂等；打开动画期间等待其完成再销毁，初始化异常则清理未完成实例。
+  Controller 在销毁事件后的微任务中释放实例所有权和页面滚动锁；清理完成前保持 Reader 活跃并阻止重开，
+  不在原生关闭动画中递归销毁。图片和布局回调不得在关闭中发起结构刷新。
 - 单页与双页共用稳定的 Spread DOM 容器；双页成员各占一个不随来源到达而塌缩的等分槽，
   左右页分别朝书脊对齐。尺寸或来源迟到时 Driver 原位更新图片节点并同步三个表现 holder，
   不销毁 PhotoSwipe 根实例。结构重映射至少等待连续两个空闲帧，不强停 PhotoSwipe 动画、
@@ -114,14 +118,17 @@ viewer URL
   不存在该指针且存在粗指针时才启用触摸端自动隐藏与 tap 唤醒。
 - 双页成员的加载状态不得阻塞滚轮、键盘、点击或滑动导航；未就绪成员由稳定槽内加载动画和
   聚合 HUD 反馈。单页加载边界仍采用落页后结束本次滚轮手势的旧语义。
-- 自定义 Spread 的 mouse 点击分类只允许由 PhotoSwipe Driver 补偿；隐藏 UI 的 Spread、
-  pending 槽和中缝按背景点击处理，可见图片按图片点击处理。touch/pen 保持 PhotoSwipe 原生
-  tap 路径，Reader 通用层不得识别 PhotoSwipe DOM 类名。
+- Driver 给自定义 Spread、图片和 pending 槽添加原生点击目标标记；样式保留 flex 槽位而非
+  PhotoSwipe 原生图片的绝对定位。mouse 点击与 touch/pen tap 均由 PhotoSwipe 区分点击和拖曳，
+  不额外挂载 DOM click 补偿。通用 Reader 只接收同一个内容点击入口：左右 30% 上一页 / 下一页，
+  中间切换控件，与内容类型和控件可见性无关。单击和双击不缩放；保留原生缩放按钮、Z 键与双指缩放。
+  Reader 通用层不得识别 PhotoSwipe DOM 类名。
 - 当前 Spread 的 HUD 必须聚合所有逻辑成员，Gallery 分页空闲不得覆盖图片下载状态。结构
   重映射与 prepend 的状态锁必须在 `finally` 中释放，Reader 关闭不得被该临时状态锁忽略。
 - 图片来源填充和结构重映射均不得在 Driver 手势、主滚动或动画期间刷新 Slide；交互结束后
   至少等待连续两个空闲帧再原位更新。新的来源完成事件必须重新开始空闲帧计数，不得在统一
-  调度前直接调用 Driver 刷新。布局请求由单一合并调度器处理：正常过渡使用短 RAF burst，
+  调度前直接调用 Driver 刷新。合并邻页来源完成事件时，仍须刷新当前 Spread，防止覆盖其待填充请求。
+  布局请求由单一合并调度器处理：正常过渡使用短 RAF burst，
   长时间交互改为有界低频重试，任何异常状态都不得形成永久逐帧轮询。Driver 只把会移动 holder
   的手势、主滚动、开合和 pan 动画视为阻塞，不相关的 PhotoSwipe/宿主动画不能永久阻塞刷新。
   过渡期间保持 HUD，pending 槽不得是无反馈的纯黑区域。相同 HUD 状态不得重复重建 DOM，状态
@@ -165,6 +172,24 @@ viewer URL
 - 没有廉价预览时，只有用户主动滚动缩略图面板并稳定 300 ms 才加载实际可视项；中心优先、
   并发 2、释放全图租约后保留约 300 px 的有界缩略图缓存。
 
+## 原生画廊悬停预览
+
+- `SiteAdapter.getHoverTarget()` 是可选原生 DOM 能力，只返回目标元素和稳定图片 key。
+  E-Hentai / ExHentai 当前提供该能力；没有能力的适配器无需改动，不扫描网页任意图片。
+- `app/create-hover-preview.ts` 把 key 匹配到 Store 内已有 GalleryItem，并注入设置、Reader 状态
+  和 `acquireImage()`；`preview/` 不访问 Store、具体站点、ReaderSession 或 PhotoSwipe。
+- 仅非卷轴、Reader 未打开、有可悬浮精细指针时接受鼠标事件；沿用共享输入能力判定，混合设备
+  支持鼠标，触摸事件不触发。设置为 off / fit / compact，默认 fit；仅有能力且关闭卷轴时显示。
+- 稳定悬停 400 ms 后才显示 URL / Sprite 占位并获取清晰图。preview 使用共享前台调度和有界来源
+  恢复，持有最多一张图的租约，不预取邻页；现有首次停留预热保持原策略，由共享服务处理任务提升。
+- 预览浮层不拦截指针或获取焦点，不改原生点击行为、Reader 位置或导航。fit 等比完整显示在
+  90% 窗口内；compact 最大宽 520 px、高 70% 窗口，并在目标附近换边和约束位置。
+- 关闭、切换、Reader 状态和设置变化时先移除展示节点，再释放租约和监听；迟到结果以代次隔离。
+  待解码节点取消时清除来源；可见像素成功解码前保留缩略图和加载反馈。滚动、键盘、指针按下、
+  页面隐藏、失焦、resize 和 pagehide 均关闭；同一目标须移出再移入才重新触发。
+- 事件委托与 AbortController 统一清理监听器，只有一个延迟 timer；无独立缓存、下载队列、
+  Object URL、持续动画轮询或全页 MutationObserver。新站点接入只补充目标 key 映射并验证其真实 DOM。
+
 ## 站点事实
 
 ### 4KHD
@@ -187,6 +212,7 @@ viewer URL
 ### 18comic
 
 - `aid/scramble_id` 属于不透明站点元数据；反乱序实现位于 materializer。
+- 章节元数据只匹配页面脚本中的完整变量名，不能匹配 `next_aid` 等后缀；后续页面不得借用当前页全局值。
 - 下载、`createImageBitmap`、Canvas 重排和 Blob 导出必须可取消；转换并发为 1，导出后立即
   关闭 Bitmap、缩小 OffscreenCanvas backing store，并把已知尺寸交给共享加载层复用。
 - 前台来源尝试时限为 20 秒，后台为 30 秒；超时沿用共享有界重试。串行 materialize 下的

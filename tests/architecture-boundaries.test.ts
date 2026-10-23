@@ -42,6 +42,17 @@ test('core contracts depend only on other core contracts', async () => {
   await assertSourcesDoNotContain(path.join(srcRoot, 'core'), [/from\s+['"]\.\.\//]);
 });
 
+test('hover preview consumes injected gallery items and shared image leases without site rules or a second loader', async () => {
+  await assertSourcesDoNotContain(path.join(srcRoot, 'preview'), [
+    /state\/store/, /sites\//, /photoswipe/i, /\bfetch\(/, /new Image\(/,
+    /createObjectURL|revokeObjectURL|MutationObserver|requestAnimationFrame/,
+    /18comic|4KHD|E-Hentai|ExHentai|#gdt/,
+  ]);
+  const app = await readFile(path.join(srcRoot, 'app/create-hover-preview.ts'), 'utf8');
+  assert.match(app, /acquireImage\(item\.viewerUrl/);
+  assert.match(app, /item\.key === target\.key/);
+});
+
 test('site adapters do not mutate the application Store', async () => {
   await assertSourcesDoNotContain(path.join(srcRoot, 'sites'), [/state\/store/]);
 });
@@ -191,7 +202,9 @@ test('reader remapping always releases its guard and keeps HUD state image-aware
   const hudVisibleRule = css.match(/\.sp-hud-container\.show \{([\s\S]*?)\n\}/)?.[1] ?? '';
   assert.doesNotMatch(hudVisibleRule, /pointer-events:\s*auto/);
   assert.doesNotMatch(closeHandler, /isReinitializing/);
-  assert.match(source, /function close\(\): void \{\s*if \(!isActive\) return;/);
+  const closeFunction = source.match(/function close\(\): void \{([\s\S]*?)\n  \}/)?.[1] ?? '';
+  assert.doesNotMatch(closeFunction, /isReinitializing/);
+  assert.match(closeFunction, /if \(!isActive \|\| isClosing\) return;/);
 });
 
 test('stable spread slots do not collapse while the partner source is pending', async () => {

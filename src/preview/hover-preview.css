@@ -1,0 +1,54 @@
+.hr-hover-preview {
+  all: initial;
+  position: fixed;
+  display: block;
+  z-index: 100000;
+  overflow: hidden;
+  box-sizing: border-box;
+  pointer-events: none !important;
+  background: #171719;
+  border-radius: 6px;
+  box-shadow: 0 8px 40px #0009, 0 0 0 1px #ffffff38;
+  contain: layout paint;
+}
+
+.hr-hover-preview * {
+  box-sizing: border-box;
+  pointer-events: none !important;
+}
+
+.hr-hover-preview .hr-hover-preview__picture,
+.hr-hover-preview .hr-hover-preview__picture > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  object-fit: contain;
+}
+
+.hr-hover-preview .hr-hover-preview__sprite {
+  background-repeat: no-repeat;
+  transform-origin: top left;
+}
+
+.hr-hover-preview .hr-hover-preview__status {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 24px);
+  padding: 6px 12px;
+  border-radius: 16px;
+  background: #171719df;
+  color: #fff;
+  font: 13px/1.5 system-ui, sans-serif;
+  text-align: center;
+}
+
+.hr-hover-preview [hidden] {
+  display: none !important;
+}

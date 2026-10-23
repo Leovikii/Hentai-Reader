@@ -1,5 +1,9 @@
 import type { UserSettings } from './types';
 
+export function normalizeHoverPreviewMode(value: unknown): UserSettings['hoverPreviewMode'] {
+  return value === 'off' || value === 'compact' ? value : 'fit';
+}
+
 export const AUTO_PLAY_INTERVAL_MIN_SECONDS = 1;
 export const AUTO_PLAY_INTERVAL_MAX_SECONDS = 60;
 export const AUTO_PLAY_INTERVAL_STEP_SECONDS = 5;

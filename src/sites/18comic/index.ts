@@ -1,6 +1,7 @@
 import type { SiteAdapter } from '../../core/site-adapter';
 import type { GalleryItem } from '../../core/gallery';
 import { LOAD_PRIORITY } from '../../state/load-policy';
+import { get18ComicChapterMetadata } from './chapter-metadata';
 import {
   create18ComicBrowserMaterializer,
   get18ComicImageLoadTimeout,
@@ -15,13 +16,10 @@ function extractChapterItems(
   useUnsafeFallback: boolean,
   suppressNativeDecode: boolean,
 ): GalleryItem[] {
-  const html = doc.documentElement.innerHTML;
-  const aidMatch = html.match(/aid\s*=\s*['"]?(\d+)['"]?/);
-  const scrambleMatch = html.match(/scramble_id\s*=\s*['"]?(\d+)['"]?/);
-  const aid = aidMatch?.[1]
-    || (useUnsafeFallback && unsafeWindow.aid ? String(unsafeWindow.aid) : '');
-  const scrambleId = scrambleMatch?.[1]
-    || (useUnsafeFallback && unsafeWindow.scramble_id ? String(unsafeWindow.scramble_id) : '');
+  const { aid, scrambleId } = get18ComicChapterMetadata(doc, useUnsafeFallback ? {
+    aid: unsafeWindow.aid == null ? '' : String(unsafeWindow.aid),
+    scramble_id: unsafeWindow.scramble_id == null ? '' : String(unsafeWindow.scramble_id),
+  } : undefined);
 
   const items: GalleryItem[] = [];
   const seenUrls = new Set<string>();
