@@ -156,6 +156,45 @@ export function createSettingsPanel(anchorElement: HTMLElement): SettingsPanelHa
   };
   syncDoublePageDirectionVisibility();
 
+  if (store.activeAdapter?.getHoverTarget && !store.settings.scrollMode) {
+    const item = document.createElement('div');
+    item.className = 'settings-item';
+    item.title = i18n.previewHint;
+    const label = document.createElement('span');
+    label.className = 'settings-label';
+    label.textContent = i18n.hoverPreview;
+    const control = document.createElement('div');
+    control.className = 'segment-control';
+    control.setAttribute('role', 'group');
+    control.setAttribute('aria-label', i18n.hoverPreview);
+    const buttons: HTMLButtonElement[] = [];
+    const choices: Array<{ value: UserSettings['hoverPreviewMode']; label: string }> = [
+      { value: 'off', label: i18n.previewOff },
+      { value: 'fit', label: i18n.previewFit },
+      { value: 'compact', label: i18n.previewCompact },
+    ];
+    choices.forEach(choice => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      const active = store.settings.hoverPreviewMode === choice.value;
+      button.className = `segment-item${active ? ' active' : ''}`;
+      button.textContent = choice.label;
+      button.setAttribute('aria-pressed', String(active));
+      button.onclick = event => {
+        event.stopPropagation();
+        store.updateSetting('hoverPreviewMode', choice.value);
+        buttons.forEach(element => {
+          element.classList.toggle('active', element === button);
+          element.setAttribute('aria-pressed', String(element === button));
+        });
+      };
+      buttons.push(button);
+      control.append(button);
+    });
+    item.append(label, control);
+    bottomSheet.append(item);
+  }
+
   // Auto-play interval setting
   const intervalItem = document.createElement('div');
   intervalItem.className = 'settings-item';

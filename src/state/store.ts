@@ -6,6 +6,7 @@ import { loadSettings } from './config';
 import {
   normalizeAutoPlayIntervalMs,
   normalizeDoublePageDirection,
+  normalizeHoverPreviewMode,
 } from './settings-values';
 
 type StoreEvent = 'settingsChanged' | 'readerModeChanged';
@@ -49,6 +50,8 @@ class Store {
       normalizedValue = normalizeAutoPlayIntervalMs(value) as UserSettings[K];
     } else if (key === 'doublePageDirection') {
       normalizedValue = normalizeDoublePageDirection(value) as UserSettings[K];
+    } else if (key === 'hoverPreviewMode') {
+      normalizedValue = normalizeHoverPreviewMode(value) as UserSettings[K];
     }
     this._settings[key] = normalizedValue;
     if (key === 'scrollMode' && this.activeAdapter) {

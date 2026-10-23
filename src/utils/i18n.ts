@@ -11,6 +11,11 @@ export const i18n = {
 
   // Settings Panel
   scrollMode: isZH ? '卷轴模式' : 'Scroll Mode',
+  hoverPreview: isZH ? '悬停预览' : 'Hover Preview',
+  previewOff: isZH ? '关闭' : 'Off',
+  previewFit: isZH ? '适应窗口' : 'Fit',
+  previewCompact: isZH ? '紧凑' : 'Compact',
+  previewHint: isZH ? '停留后加载清晰图，会产生图片请求' : 'Loads a full image after hovering; uses image requests',
   autoEnter: isZH ? '自动进入阅读器' : 'Auto Enter Reader',
   clickToEnter: isZH ? '点击图片进入阅读器' : 'Click Image to Enter Reader',
   doublePageMode: isZH ? '动态双页阅读' : 'Dynamic Two-page View',

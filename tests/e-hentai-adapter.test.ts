@@ -5,10 +5,20 @@ import {
   extractEHentaiItems,
   getEHentaiNextUrl,
   getEHentaiPrevUrl,
+  getEHentaiHoverTarget,
   parseEHentaiPageMetadata,
   parseEHentaiSourceDimensions,
   parseEHentaiViewer,
 } from '../src/sites/e-hentai/gallery.ts';
+
+test('maps native image and sprite descendants to their gallery link without accepting unrelated images', () => {
+  for (const hostname of ['e-hentai.org', 'exhentai.org']) {
+    const anchor = { href: `https://${hostname}/s/token/1` };
+    const child = { closest: (selector: string) => selector === '#gdt a[href]' ? anchor : null } as unknown as Element;
+    assert.deepEqual(getEHentaiHoverTarget(child), { element: anchor, key: anchor.href });
+  }
+  assert.equal(getEHentaiHoverTarget({ closest: () => null } as unknown as Element), null);
+});
 
 function anchorWithSprite(href: string, style: string): Element {
   const sprite = { getAttribute: (name: string) => name === 'style' ? style : null };

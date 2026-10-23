@@ -274,10 +274,11 @@ test('does not switch sources for speculative background consumers', async () =>
   }
 });
 
-test('upgrades a shared background load when a demand consumer joins', async () => {
+for (const intent of ['foreground', 'preview'] as const) test(`upgrades a shared background load when ${intent} demand joins`, async () => {
   let rejectInitial!: (error: Error) => void;
   const initialAttempt = new Promise<never>((_resolve, reject) => { rejectInitial = reject; });
   const contexts: Array<string | undefined> = [];
+  const promotions: string[] = [];
   const service = new ImageLoadService({
     resolve: async (_url, context) => {
       contexts.push(context.retryToken);
@@ -289,16 +290,18 @@ test('upgrades a shared background load when a demand consumer joins', async () 
       ? initialAttempt
       : { width: 20, height: 30 },
     delay: noDelay,
+    promote: (_url, _priority, lane) => promotions.push(lane),
   }, { resolveAttempts: 1, alternateSourceRetries: 1, freshResolveRetries: 0 });
 
   const warmup = service.acquire('viewer', { intent: 'warmup', priority: 5 });
   await Promise.resolve();
-  const foreground = service.acquire('viewer', { intent: 'foreground', priority: 100 });
+  const foreground = service.acquire('viewer', { intent, priority: 100 });
   rejectInitial(new Error('simulated unavailable source'));
 
   assert.equal((await foreground.result)?.src, 'healthy-source');
   assert.equal(foreground.result, warmup.result);
   assert.deepEqual(contexts, [undefined, 'alternate-token']);
+  assert.deepEqual(promotions, ['foreground']);
   warmup.release();
   foreground.release();
 });

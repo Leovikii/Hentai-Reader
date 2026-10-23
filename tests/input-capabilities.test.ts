@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getReaderInputCapabilities } from '../src/utils/input-capabilities.ts';
+import { getReaderInputCapabilities, hasHoveringFinePointer } from '../src/utils/input-capabilities.ts';
+
+test('hover preview recognizes desktop and hybrid fine pointers while rejecting coarse-only input', () => {
+  assert.equal(hasHoveringFinePointer(matcher(['(hover: hover) and (pointer: fine)'])), true);
+  assert.equal(hasHoveringFinePointer(matcher(['(any-hover: hover) and (any-pointer: fine)', '(pointer: coarse)'])), true);
+  assert.equal(hasHoveringFinePointer(matcher(['(pointer: coarse)', '(hover: none)'])), false);
+});
 
 function matcher(activeQueries: readonly string[]): (query: string) => boolean {
   const active = new Set(activeQueries);

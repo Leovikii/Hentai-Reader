@@ -4,8 +4,14 @@ import {
   normalizeAutoPlayIntervalMs,
   normalizeAutoPlaySeconds,
   normalizeDoublePageDirection,
+  normalizeHoverPreviewMode,
   stepAutoPlaySeconds,
 } from '../src/state/settings-values.ts';
+
+test('hover preview persists only supported modes and defaults to fit', () => {
+  for (const value of ['off', 'fit', 'compact']) assert.equal(normalizeHoverPreviewMode(value), value);
+  for (const value of [null, undefined, true, 'unknown']) assert.equal(normalizeHoverPreviewMode(value), 'fit');
+});
 
 test('normalizes autoplay seconds to whole values within the 1–60 range', () => {
   assert.equal(normalizeAutoPlaySeconds(0), 1);

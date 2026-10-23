@@ -2,6 +2,8 @@
 
 A high-performance universal reader for image galleries, built for mobile and touch with an extensible multi-site architecture.
 
+> **New in v3.4.0:** Hover over E-Hentai / ExHentai gallery thumbnails with Scroll Mode off to preview clear images in Fit or Compact mode.
+
 Currently supported (more on the way):
 - E-Hentai / ExHentai
 - 18comic (JMComic)
@@ -21,6 +23,7 @@ Currently supported (more on the way):
 - **Infinite Scroll Mode** — Converts multi-page galleries into a continuous vertical scroll with auto-prefetching, while preserving native page metadata (tags, titles, comments). Toggle on the fly with instant reload.
 - **Immersive Reader Mode** — A distraction-free, full-screen viewer with keyboard, wheel, tap, and swipe navigation, plus a virtual-scrolling thumbnail panel for quick jumps.
 - **Dynamic Two-page View** — Enabled by default on wide screens: adjacent portrait pages form a zoomable spread, with selectable left-to-right or manga-style right-to-left page placement. Landscape pages and narrow screens safely remain single-page.
+- **Gallery Hover Preview** — With Scroll Mode off on E-Hentai / ExHentai, hover over a grid thumbnail for 400 ms to load a clear image. Choose Off, Fit, or Compact in Settings. Moving away, scrolling, or pressing Esc dismisses it while native clicks remain unchanged. Full-image requests use the site's image quota.
 - **Performance Engine** — Foreground-first image scheduling, staged 5/2 directional prefetch, viewport-aware loading, lease-protected shared tasks, and bounded caches keep current pages fast without duplicate work.
 - **Desktop & Touch** — Full desktop controls (wheel paging, keyboard, click zones) plus first-class touch: edge tap-to-page, swipe paging, pinch-zoom, and a timed auto-hiding UI for one-handed reading.
 - **18comic Decoding Engine** — Canvas-based descrambling runs through the shared priority scheduler, reuses managed image tasks, and releases Bitmap, Canvas, Blob, and Object URL resources predictably.

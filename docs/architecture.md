@@ -1,6 +1,6 @@
 # 当前架构与兼容性基线
 
-状态：v3.3.1 已正式发布并完成自动化与实机验收。当前没有活动版本计划。
+状态：发布基线为 v3.3.1；v3.4.0 悬停预览已实现，验收记录见 `v3.4.0-plan.md`，尚未发布。
 
 ## 总体原则
 
@@ -20,6 +20,7 @@ src/
   core/                   Gallery、图片和站点契约
   services/               图片生命周期、调度、限流、缩略图
   reader/                 Reader 控制器、Session、Driver 和 Shell
+  preview/                通用画廊悬停预览交互与浮层
   scroll/                 卷轴加载、分页观察和关闭返回定位
   sites/                  站点适配器与新站点模板
   state/                  应用设置和 Store
@@ -61,7 +62,7 @@ viewer URL
   -> optional materialize
   -> byte load / dimensions
   -> shared cache
-  -> leases: foreground / neighbor / scroll / thumbnail / warmup
+  -> leases: foreground / preview / neighbor / scroll / thumbnail / warmup
   -> eviction and optional Object URL revoke
 ```
 
@@ -164,6 +165,24 @@ viewer URL
 - URL/Sprite 缩略图直接使用 Preview Descriptor。
 - 没有廉价预览时，只有用户主动滚动缩略图面板并稳定 300 ms 才加载实际可视项；中心优先、
   并发 2、释放全图租约后保留约 300 px 的有界缩略图缓存。
+
+## 原生画廊悬停预览
+
+- `SiteAdapter.getHoverTarget()` 是可选原生 DOM 能力，只返回目标元素和稳定图片 key。
+  E-Hentai / ExHentai 当前提供该能力；没有能力的适配器无需改动，不扫描网页任意图片。
+- `app/create-hover-preview.ts` 把 key 匹配到 Store 内已有 GalleryItem，并注入设置、Reader 状态
+  和 `acquireImage()`；`preview/` 不访问 Store、具体站点、ReaderSession 或 PhotoSwipe。
+- 仅非卷轴、Reader 未打开、有可悬浮精细指针时接受鼠标事件；沿用共享输入能力判定，混合设备
+  支持鼠标，触摸事件不触发。设置为 off / fit / compact，默认 fit；仅有能力且关闭卷轴时显示。
+- 稳定悬停 400 ms 后才显示 URL / Sprite 占位并获取清晰图。preview 使用共享前台调度和有界来源
+  恢复，持有最多一张图的租约，不预取邻页；现有首次停留预热保持原策略，由共享服务处理任务提升。
+- 预览浮层不拦截指针或获取焦点，不改原生点击行为、Reader 位置或导航。fit 等比完整显示在
+  90% 窗口内；compact 最大宽 520 px、高 70% 窗口，并在目标附近换边和约束位置。
+- 关闭、切换、Reader 状态和设置变化时先移除展示节点，再释放租约和监听；迟到结果以代次隔离。
+  待解码节点取消时清除来源；可见像素成功解码前保留缩略图和加载反馈。滚动、键盘、指针按下、
+  页面隐藏、失焦、resize 和 pagehide 均关闭；同一目标须移出再移入才重新触发。
+- 事件委托与 AbortController 统一清理监听器，只有一个延迟 timer；无独立缓存、下载队列、
+  Object URL、持续动画轮询或全页 MutationObserver。新站点接入只补充目标 key 映射并验证其真实 DOM。
 
 ## 站点事实
 

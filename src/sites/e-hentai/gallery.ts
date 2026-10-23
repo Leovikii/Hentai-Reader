@@ -1,4 +1,10 @@
 import type { GalleryItem, PreviewDescriptor } from '../../core/gallery';
+import type { GalleryHoverTarget } from '../../core/site-adapter';
+
+export function getEHentaiHoverTarget(target: Element): GalleryHoverTarget | null {
+  const anchor = target.closest<HTMLAnchorElement>('#gdt a[href]');
+  return anchor ? { element: anchor, key: anchor.href } : null;
+}
 
 export interface EHentaiPageMetadata {
   totalPages: number;

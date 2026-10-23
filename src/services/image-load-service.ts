@@ -488,7 +488,7 @@ export class ImageLoadService {
 
   /** Background speculation must not fan one failed byte request into a node switch. */
   private canRetrySource(intent: ImageLoadIntent): boolean {
-    return intent === 'foreground' || intent === 'neighbor' || intent === 'scroll';
+    return intent === 'foreground' || intent === 'preview' || intent === 'neighbor' || intent === 'scroll';
   }
 
   private rememberDimensionsHint(
@@ -510,7 +510,7 @@ export class ImageLoadService {
   }
 
   private defaultLane(intent: ImageLoadIntent): ImageTaskLane {
-    return intent === 'foreground' || intent === 'neighbor' ? 'foreground' : 'background';
+    return intent === 'foreground' || intent === 'preview' || intent === 'neighbor' ? 'foreground' : 'background';
   }
 
   private touchCache(url: string, entry: CacheEntry): void {
