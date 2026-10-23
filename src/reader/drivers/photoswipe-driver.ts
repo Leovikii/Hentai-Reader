@@ -18,6 +18,9 @@ class PhotoSwipeDriver implements ReaderDriver {
   private readonly renderedImageRetryAttempts = new Map<string, number>();
   private readonly renderedImageRetryPending = new Set<string>();
   private readonly renderedImageRetryTimers = new Set<ReturnType<typeof setTimeout>>();
+  private initCompleted = false;
+  private destroyRequested = false;
+  private destroyed = false;
 
   constructor(private readonly options: ReaderDriverOptions) {
     this.instance = new PhotoSwipe({
@@ -51,6 +54,13 @@ class PhotoSwipeDriver implements ReaderDriver {
       bgClickAction: (point: any) => options.onBackgroundClick(point),
       imageClickAction: (point: any) => options.onImageClick(point),
       tapAction: (point: any) => options.onTap(point),
+    });
+
+    this.instance.on('destroy', () => {
+      this.destroyed = true;
+      this.renderedImageRetryTimers.forEach(timer => clearTimeout(timer));
+      this.renderedImageRetryTimers.clear();
+      this.renderedImageRetryPending.clear();
     });
 
     // Reader spreads remain opaque to PhotoSwipe outside this driver. Convert
@@ -131,12 +141,27 @@ class PhotoSwipeDriver implements ReaderDriver {
 
   init(): void {
     this.instance.init();
+    this.initCompleted = true;
     this.instance.element?.setAttribute('aria-label', 'Image reader');
   }
   destroy(): void {
-    this.renderedImageRetryTimers.forEach(timer => clearTimeout(timer));
-    this.renderedImageRetryTimers.clear();
-    this.renderedImageRetryPending.clear();
+    if (this.destroyed || this.destroyRequested) return;
+    this.destroyRequested = true;
+    if (!this.initCompleted) {
+      // An interrupted init may never emit openingAnimationEnd.
+      this.instance.animations.stopAll();
+      this.instance.isDestroying = true;
+    } else if (this.instance.isDestroying) {
+      return; // Native closing already owns the closing animation and teardown.
+    } else if (this.instance.opener.isOpening) {
+      this.instance.on('openingAnimationEnd', () => {
+        // Let PhotoSwipe finish binding its own opening handlers first.
+        queueMicrotask(() => {
+          if (!this.destroyed && !this.instance.isDestroying) this.instance.destroy();
+        });
+      });
+      return;
+    }
     this.instance.destroy();
   }
   next(): void { this.instance.next(); }
@@ -496,6 +521,7 @@ class PhotoSwipeDriver implements ReaderDriver {
     slide: any,
     bindingKey: string,
   ): void {
+    if (this.destroyRequested || this.destroyed) return;
     const logicalIndex = Number(page.index);
     const attempts = this.renderedImageRetryAttempts.get(bindingKey) ?? 0;
     if (this.renderedImageRetryPending.has(bindingKey)) {
@@ -513,7 +539,8 @@ class PhotoSwipeDriver implements ReaderDriver {
     const timer = setTimeout(() => {
       this.renderedImageRetryTimers.delete(timer);
       this.renderedImageRetryPending.delete(bindingKey);
-      if (!image.isConnected || this.renderedImageBindings.get(image) !== bindingKey) return;
+      if (this.destroyRequested || this.destroyed
+          || !image.isConnected || this.renderedImageBindings.get(image) !== bindingKey) return;
       const replacement = document.createElement('img');
       image.replaceWith(replacement);
       this.configureSpreadImage(replacement, page, slide);
@@ -525,6 +552,7 @@ class PhotoSwipeDriver implements ReaderDriver {
     logicalIndex: number,
     state: 'loading' | 'loaded' | 'error',
   ): void {
+    if (this.destroyRequested || this.destroyed) return;
     this.options.onRenderedImageStateChange({ logicalIndex, state });
   }
 }

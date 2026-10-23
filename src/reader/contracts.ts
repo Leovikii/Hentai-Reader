@@ -19,6 +19,7 @@ export interface ReaderDriver {
   readonly currentIndex: number;
   on(event: string, listener: (event: any) => void): void;
   init(): void;
+  /** Request teardown; emits destroy when cleanup begins, possibly after opening settles. */
   destroy(): void;
   next(): void;
   prev(): void;

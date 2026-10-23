@@ -202,7 +202,9 @@ test('reader remapping always releases its guard and keeps HUD state image-aware
   const hudVisibleRule = css.match(/\.sp-hud-container\.show \{([\s\S]*?)\n\}/)?.[1] ?? '';
   assert.doesNotMatch(hudVisibleRule, /pointer-events:\s*auto/);
   assert.doesNotMatch(closeHandler, /isReinitializing/);
-  assert.match(source, /function close\(\): void \{\s*if \(!isActive\) return;/);
+  const closeFunction = source.match(/function close\(\): void \{([\s\S]*?)\n  \}/)?.[1] ?? '';
+  assert.doesNotMatch(closeFunction, /isReinitializing/);
+  assert.match(closeFunction, /if \(!isActive \|\| isClosing\) return;/);
 });
 
 test('stable spread slots do not collapse while the partner source is pending', async () => {

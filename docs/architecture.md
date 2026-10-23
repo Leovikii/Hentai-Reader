@@ -100,6 +100,9 @@ viewer URL
   重算时以稳定 key 保持主逻辑页。
 - Reader Shell 只依赖 Reader 契约和 Driver，不直接读取全局 Store。
 - PhotoSwipe 包导入、`currSlide` 等内部访问和手势挂载只允许在 Driver。
+- Driver 的销毁请求须幂等；打开动画期间等待其完成再销毁，初始化异常则清理未完成实例。
+  Controller 在销毁事件后的微任务中释放实例所有权和页面滚动锁；清理完成前保持 Reader 活跃并阻止重开，
+  不在原生关闭动画中递归销毁。图片和布局回调不得在关闭中发起结构刷新。
 - 单页与双页共用稳定的 Spread DOM 容器；双页成员各占一个不随来源到达而塌缩的等分槽，
   左右页分别朝书脊对齐。尺寸或来源迟到时 Driver 原位更新图片节点并同步三个表现 holder，
   不销毁 PhotoSwipe 根实例。结构重映射至少等待连续两个空闲帧，不强停 PhotoSwipe 动画、
@@ -122,7 +125,8 @@ viewer URL
   重映射与 prepend 的状态锁必须在 `finally` 中释放，Reader 关闭不得被该临时状态锁忽略。
 - 图片来源填充和结构重映射均不得在 Driver 手势、主滚动或动画期间刷新 Slide；交互结束后
   至少等待连续两个空闲帧再原位更新。新的来源完成事件必须重新开始空闲帧计数，不得在统一
-  调度前直接调用 Driver 刷新。布局请求由单一合并调度器处理：正常过渡使用短 RAF burst，
+  调度前直接调用 Driver 刷新。合并邻页来源完成事件时，仍须刷新当前 Spread，防止覆盖其待填充请求。
+  布局请求由单一合并调度器处理：正常过渡使用短 RAF burst，
   长时间交互改为有界低频重试，任何异常状态都不得形成永久逐帧轮询。Driver 只把会移动 holder
   的手势、主滚动、开合和 pan 动画视为阻塞，不相关的 PhotoSwipe/宿主动画不能永久阻塞刷新。
   过渡期间保持 HUD，pending 槽不得是无反馈的纯黑区域。相同 HUD 状态不得重复重建 DOM，状态
@@ -206,6 +210,7 @@ viewer URL
 ### 18comic
 
 - `aid/scramble_id` 属于不透明站点元数据；反乱序实现位于 materializer。
+- 章节元数据只匹配页面脚本中的完整变量名，不能匹配 `next_aid` 等后缀；后续页面不得借用当前页全局值。
 - 下载、`createImageBitmap`、Canvas 重排和 Blob 导出必须可取消；转换并发为 1，导出后立即
   关闭 Bitmap、缩小 OffscreenCanvas backing store，并把已知尺寸交给共享加载层复用。
 - 前台来源尝试时限为 20 秒，后台为 30 秒；超时沿用共享有界重试。串行 materialize 下的
