@@ -1,13 +1,11 @@
 import PhotoSwipe from 'photoswipe';
-import type { ReaderDriver, ReaderDriverOptions, ScreenPoint } from '../contracts';
+import type { ReaderDriver, ReaderDriverOptions } from '../contracts';
 import {
   getSpreadImageRenderState,
   getSpreadPresentationDirection,
   getPhotoSwipeHolderPosition,
-  getSpreadMouseClickAction,
   reconcilePhotoSwipeHolder,
   shouldRetainMountedSpreadImage,
-  shouldHandleSpreadMouseClick,
   shouldRetrySpreadImage,
 } from './photoswipe-holder';
 
@@ -51,9 +49,9 @@ class PhotoSwipeDriver implements ReaderDriver {
         const hRatio = zoomLevelObject.panAreaSize.x / zoomLevelObject.elementSize.x;
         return Math.max(hRatio * 3, 4);
       },
-      bgClickAction: (point: any) => options.onBackgroundClick(point),
-      imageClickAction: (point: any) => options.onImageClick(point),
-      tapAction: (point: any) => options.onTap(point),
+      bgClickAction: options.onContentClick,
+      imageClickAction: options.onContentClick,
+      tapAction: options.onContentClick,
     });
 
     this.instance.on('destroy', () => {
@@ -78,14 +76,16 @@ class PhotoSwipeDriver implements ReaderDriver {
         itemData.hrSpreadDirection,
         itemData.hrSpread.length,
       );
+      // Native mouse actions recognize pswp__img targets. Mark every spread
+      // surface so PhotoSwipe owns tap-vs-drag classification and teardown.
       const images = itemData.hrSpread.map((page: any) => page.src
-        ? `<img class="hr-reader-spread__page" data-logical-index="${Number(page.index)}" src="${escape(page.src)}" alt="${escape(page.alt || '')}" decoding="async" fetchpriority="${fetchPriority}">`
-        : `<span class="hr-reader-spread__page hr-reader-spread__page--pending" data-logical-index="${Number(page.index)}" aria-hidden="true"></span>`
+        ? `<img class="pswp__img hr-reader-spread__page" data-logical-index="${Number(page.index)}" src="${escape(page.src)}" alt="${escape(page.alt || '')}" decoding="async" fetchpriority="${fetchPriority}">`
+        : `<span class="pswp__img hr-reader-spread__page hr-reader-spread__page--pending" data-logical-index="${Number(page.index)}" aria-hidden="true"></span>`
       ).join('');
       return {
         ...itemData,
         type: 'html',
-        html: `<div class="hr-reader-spread" data-reader-spread data-reader-spread-direction="${direction}">${images}</div>`,
+        html: `<div class="pswp__img hr-reader-spread" data-reader-spread data-reader-spread-direction="${direction}">${images}</div>`,
       };
     });
     this.instance.addFilter('isContentZoomable', (zoomable: boolean, content: any) => (
@@ -97,37 +97,6 @@ class PhotoSwipeDriver implements ReaderDriver {
       reconcilePhotoSwipeHolder(holderElement, slide, this.slidesByHolder.get(holderElement));
       this.slidesByHolder.set(holderElement, slide);
       this.bindSpreadImages(slide);
-    });
-    this.instance.on('bindEvents', () => {
-      const root = this.instance.element;
-      if (!root) return;
-      let lastPointerType = '';
-      const onPointerDown = (event: PointerEvent) => {
-        lastPointerType = event.pointerType;
-      };
-      const onClick = (event: MouseEvent) => {
-        const pointerType = (event as PointerEvent).pointerType || lastPointerType;
-        lastPointerType = '';
-        // Touch taps already use PhotoSwipe's tapAction. Only fill the mouse
-        // classification gap, and preserve its post-drag click suppression.
-        if (!shouldHandleSpreadMouseClick(pointerType, event.defaultPrevented, event.button)) return;
-        const action = getSpreadMouseClickAction(
-          event.target as Element | null,
-          root.classList.contains('pswp--ui-visible'),
-        );
-        if (!action) return;
-        event.preventDefault();
-        event.stopPropagation();
-        const point = { x: event.clientX, y: event.clientY };
-        if (action === 'image') options.onImageClick(point);
-        else options.onBackgroundClick(point);
-      };
-      root.addEventListener('pointerdown', onPointerDown);
-      root.addEventListener('click', onClick);
-      this.instance.on('destroy', () => {
-        root.removeEventListener('pointerdown', onPointerDown);
-        root.removeEventListener('click', onClick);
-      });
     });
   }
 
@@ -310,17 +279,6 @@ class PhotoSwipeDriver implements ReaderDriver {
     return !!slide && slide.currZoomLevel <= slide.zoomLevels.initial;
   }
 
-  canToggleCurrentZoom(): boolean {
-    const slide = this.instance.currSlide;
-    return !!slide
-      && slide.isZoomable()
-      && slide.zoomLevels.secondary !== slide.zoomLevels.initial;
-  }
-
-  toggleCurrentZoom(point: ScreenPoint): void {
-    this.instance.currSlide?.toggleZoom(point);
-  }
-
   showUi(): void {
     this.instance.element?.classList.add('pswp--ui-visible');
   }
@@ -445,7 +403,7 @@ class PhotoSwipeDriver implements ReaderDriver {
         const pending = current?.tagName === 'SPAN'
           ? current
           : document.createElement('span');
-        pending.className = 'hr-reader-spread__page hr-reader-spread__page--pending';
+        pending.className = 'pswp__img hr-reader-spread__page hr-reader-spread__page--pending';
         pending.dataset.logicalIndex = String(logicalIndex);
         pending.setAttribute('aria-hidden', 'true');
         next = pending;
@@ -486,7 +444,7 @@ class PhotoSwipeDriver implements ReaderDriver {
     const logicalIndex = Number(page.index);
     const src = String(page.src || '');
     const bindingKey = `${logicalIndex}\u0000${src}`;
-    image.className = 'hr-reader-spread__page';
+    image.className = 'pswp__img hr-reader-spread__page';
     image.dataset.logicalIndex = String(logicalIndex);
     image.alt = page.alt || '';
     image.decoding = 'async';

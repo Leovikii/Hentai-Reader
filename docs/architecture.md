@@ -118,9 +118,11 @@ viewer URL
   不存在该指针且存在粗指针时才启用触摸端自动隐藏与 tap 唤醒。
 - 双页成员的加载状态不得阻塞滚轮、键盘、点击或滑动导航；未就绪成员由稳定槽内加载动画和
   聚合 HUD 反馈。单页加载边界仍采用落页后结束本次滚轮手势的旧语义。
-- 自定义 Spread 的 mouse 点击分类只允许由 PhotoSwipe Driver 补偿；隐藏 UI 的 Spread、
-  pending 槽和中缝按背景点击处理，可见图片按图片点击处理。touch/pen 保持 PhotoSwipe 原生
-  tap 路径，Reader 通用层不得识别 PhotoSwipe DOM 类名。
+- Driver 给自定义 Spread、图片和 pending 槽添加原生点击目标标记；样式保留 flex 槽位而非
+  PhotoSwipe 原生图片的绝对定位。mouse 点击与 touch/pen tap 均由 PhotoSwipe 区分点击和拖曳，
+  不额外挂载 DOM click 补偿。通用 Reader 只接收同一个内容点击入口：左右 30% 上一页 / 下一页，
+  中间切换控件，与内容类型和控件可见性无关。单击和双击不缩放；保留原生缩放按钮、Z 键与双指缩放。
+  Reader 通用层不得识别 PhotoSwipe DOM 类名。
 - 当前 Spread 的 HUD 必须聚合所有逻辑成员，Gallery 分页空闲不得覆盖图片下载状态。结构
   重映射与 prepend 的状态锁必须在 `finally` 中释放，Reader 关闭不得被该临时状态锁忽略。
 - 图片来源填充和结构重映射均不得在 Driver 手势、主滚动或动画期间刷新 Slide；交互结束后

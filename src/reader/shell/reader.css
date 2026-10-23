@@ -526,7 +526,10 @@
   border-radius: 6px;
 }
 
-.hr-reader-spread {
+/* Native click markers must not turn flex slots into absolute-positioned images. */
+.pswp .hr-reader-spread {
+  position: relative;
+  cursor: default;
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -537,7 +540,9 @@
   overflow: hidden;
 }
 
-.hr-reader-spread__page {
+.pswp .hr-reader-spread__page {
+  position: relative;
+  cursor: inherit;
   box-sizing: border-box;
   display: block;
   width: calc(50% - 10px);

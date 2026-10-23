@@ -310,7 +310,7 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
     onMobileInteractionStart = cancelMobileUITimeout;
     onMobileInteractionEnd = triggerMobileUITimeout;
 
-    function handleScreenClick(point: ScreenPoint, defaultCenterAction: 'zoom' | 'toggle') {
+    function handleScreenClick(point: ScreenPoint) {
       const width = window.innerWidth;
       if (point.x < width * 0.3) {
         if (pswp?.currentIndex === 0 && deps.context.getPrevUrl() && !deps.context.isPageFetching()) {
@@ -325,20 +325,14 @@ export function createReaderController(deps: ReaderControllerDeps): ReaderHandle
           pswp?.next();
         }
       } else {
-        if (defaultCenterAction === 'zoom' && pswp?.canToggleCurrentZoom()) {
-          pswp.toggleCurrentZoom(point);
-        } else {
-          const isNowVisible = pswp?.toggleUi();
-          if (isNowVisible) triggerMobileUITimeout();
-        }
+        const isNowVisible = pswp?.toggleUi();
+        if (isNowVisible) triggerMobileUITimeout();
       }
     }
 
     pswp = deps.createDriver({
       startIndex: startSpreadIndex,
-      onBackgroundClick: point => handleScreenClick(point, 'toggle'),
-      onImageClick: point => handleScreenClick(point, 'zoom'),
-      onTap: point => handleScreenClick(point, 'toggle'),
+      onContentClick: handleScreenClick,
       onRenderedImageStateChange: ({ logicalIndex, state }) => {
         if (state === 'error') renderedFailedLogicalIndices.add(logicalIndex);
         else renderedFailedLogicalIndices.delete(logicalIndex);

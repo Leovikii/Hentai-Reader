@@ -3,7 +3,6 @@ interface PhotoSwipeSlideLike {
   destroy(): void;
 }
 
-export type SpreadMouseClickAction = 'image' | 'background' | null;
 export type SpreadImageRenderState = 'loading' | 'loaded' | 'error';
 
 export function getSpreadPresentationDirection(
@@ -46,28 +45,6 @@ export function shouldRetainMountedSpreadImage(
   src: string | null | undefined,
 ): boolean {
   return tagName === 'IMG' && !!src;
-}
-
-export function shouldHandleSpreadMouseClick(
-  pointerType: string,
-  defaultPrevented: boolean,
-  button: number,
-): boolean {
-  return pointerType === 'mouse' && !defaultPrevented && button === 0;
-}
-
-/**
- * PhotoSwipe only classifies its own image and zoom-wrapper elements as click
- * targets. Reader spreads use custom DOM, so classify those mouse targets at
- * the driver boundary without teaching shared Reader code about PhotoSwipe.
- */
-export function getSpreadMouseClickAction(
-  target: Element | null,
-  uiVisible: boolean,
-): SpreadMouseClickAction {
-  if (!target?.closest('[data-reader-spread]')) return null;
-  if (!uiVisible) return 'background';
-  return target.closest('img.hr-reader-spread__page') ? 'image' : 'background';
 }
 
 /**
